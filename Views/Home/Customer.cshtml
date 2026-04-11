@@ -1,0 +1,313 @@
+﻿@model TableOrderWeb.Models.CustomerPageViewModel
+@{
+    ViewData["Title"] = "Khach tai ban";
+
+    var categories = Model.Categories.OrderBy(x => x.DisplayOrder).ToList();
+    var dishes = Model.Dishes.ToList();
+    var featuredDish = dishes.FirstOrDefault();
+
+    var cartItems = new[]
+    {
+        new { Name = "Lau thai tom nam", Note = "1/2 cay, them nam kim cham", Qty = 1, Price = "289.000d" },
+        new { Name = "Tra dao cam sa", Note = "70% duong, it da, them thach dao", Qty = 2, Price = "84.000d" },
+        new { Name = "Bo nuong sot tieu den", Note = "Khong hanh", Qty = 1, Price = "189.000d" }
+    };
+
+    var chatMessages = new[]
+    {
+        new { Sender = "Ban A03", Content = "Cho minh xin them 2 ly nuoc da va doi sang chen nho.", Type = "user" },
+        new { Sender = "Nhan vien Lan", Content = "Da nhan. Em se mang ra trong 2 phut va cap nhat bep ve yeu cau doi chen.", Type = "staff" },
+        new { Sender = "Ban A03", Content = "Cho hoi mon lau con bao lau nua xong?", Type = "user" },
+        new { Sender = "Nhan vien Lan", Content = "Mon dang o muc 80%, du kien 5 phut nua phuc vu tai ban.", Type = "staff" }
+    };
+
+    var timeline = new[]
+    {
+        new { Time = "18:42", Title = "Don #A03-104 da gui bep", State = "success" },
+        new { Time = "18:49", Title = "Tra dao da phuc vu", State = "neutral" },
+        new { Time = "18:51", Title = "Yeu cau them chen da duoc nhan", State = "neutral" },
+        new { Time = "18:56", Title = "Lau thai dang hoan thien", State = "warning" }
+    };
+}
+
+<section class="page-intro">
+    <div>
+        <span class="eyebrow">Khach hang tai ban</span>
+        <h1>Trai nghiem dat mon tu QR, gio hang chung va chat truc tiep voi phuc vu.</h1>
+        @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+        {
+            <p>@Model.ErrorMessage</p>
+        }
+    </div>
+    <div class="intro-badges">
+        <span class="status-badge">Ban A03 | Khu san vuon</span>
+        <span class="status-badge muted">Session QR hop le</span>
+        <span class="status-badge muted">@dishes.Count mon dang hien thi</span>
+    </div>
+</section>
+
+<section class="customer-grid">
+    <div class="customer-main">
+        <article class="panel-card order-banner">
+            <div>
+                <span class="eyebrow">Menu dien tu</span>
+                <h2>Moi nguoi trong ban deu co the them mon vao mot gio hang chung.</h2>
+                <p>Tinh nang mau: tim kiem nhanh, loc danh muc, de xuat mon ban chay, tu tuy chinh topping va ghi chu mon.</p>
+            </div>
+            <div class="qr-summary">
+                <div>
+                    <strong>QR Table A03</strong>
+                    <span>Xac thuc trong pham vi cua hang</span>
+                </div>
+                <button class="btn btn-accent" type="button">Goi them mon</button>
+            </div>
+        </article>
+
+        @if (featuredDish is not null)
+        {
+            <article class="panel-card feature-dish">
+                @if (!string.IsNullOrWhiteSpace(featuredDish.ImageUrl))
+                {
+                    <div class="feature-dish__media">
+                        <img src="@featuredDish.ImageUrl" alt="@featuredDish.Name" />
+                    </div>
+                }
+                else
+                {
+                    <div class="feature-dish__media feature-dish__media--empty">
+                        <span>Chua co anh mon</span>
+                    </div>
+                }
+                <div class="feature-dish__content">
+                    <span class="eyebrow">Mon dang duoc xem</span>
+                    <h2>@featuredDish.Name</h2>
+                    <p>@featuredDish.Description</p>
+                    <div class="feature-dish__meta">
+                        <span class="status-badge">@featuredDish.CategoryName</span>
+                        <span class="status-badge muted">@featuredDish.PreparationTimeMinutes phut</span>
+                        <span class="status-badge muted">@featuredDish.Price.ToString("N0")d</span>
+                    </div>
+                    <div class="detail-grid">
+                        <div class="detail-card">
+                            <strong>Thanh phan</strong>
+                            <p>@featuredDish.IngredientSummary</p>
+                        </div>
+                        <div class="detail-card">
+                            <strong>Goi y phuc vu</strong>
+                            <p>@featuredDish.ServingSuggestion</p>
+                        </div>
+                        <div class="detail-card">
+                            <strong>Tuy chinh</strong>
+                            <p>@featuredDish.CustomizationSummary</p>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        }
+
+        <article class="panel-card menu-explorer">
+            <div class="toolbar-row">
+                <div class="search-box">
+                    <span>Tim mon</span>
+                    <input type="text" value="Mon an dang doc tu SQL Server..." readonly />
+                </div>
+                <div class="sort-group">
+                    <button class="filter-chip active" type="button">Theo du lieu SQL</button>
+                    <button class="filter-chip" type="button">Gia tang</button>
+                    <button class="filter-chip" type="button">Gia giam</button>
+                </div>
+            </div>
+            <div class="category-row">
+                @for (var i = 0; i < categories.Count; i++)
+                {
+                    <button class="category-pill @(i == 0 ? "active" : "")" type="button">@categories[i].CategoryName</button>
+                }
+            </div>
+
+            <div class="menu-grid">
+                @foreach (var dish in dishes)
+                {
+                    var meta = $"{dish.CategoryName} | {(dish.IsBestSeller ? "Best seller | " : string.Empty)}{dish.PreparationTimeMinutes} phut";
+                    <article class="dish-card">
+                        <div class="dish-card__image-wrap">
+                            @if (!string.IsNullOrWhiteSpace(dish.ImageUrl))
+                            {
+                                <img class="dish-card__photo" src="@dish.ImageUrl" alt="@dish.Name" />
+                            }
+                            else
+                            {
+                                <div class="dish-card__photo dish-card__photo--empty">Chua co anh</div>
+                            }
+                            <span class="dish-card__badge">@dish.ItemCode</span>
+                        </div>
+                        <div class="dish-card__body">
+                            <div class="dish-card__header">
+                                <div>
+                                    <h3>@dish.Name</h3>
+                                    <span>@meta</span>
+                                </div>
+                                <strong>@dish.Price.ToString("N0")d</strong>
+                            </div>
+                            <p>@dish.Description</p>
+                            <div class="option-row">
+                                <span class="mini-tag">Tuy chinh da/duong</span>
+                                <span class="mini-tag">Them topping</span>
+                                <span class="mini-tag">Ghi chu bep</span>
+                            </div>
+                            <details class="dish-details">
+                                <summary>Xem chi tiet mon</summary>
+                                <div class="dish-details__content">
+                                    <div>
+                                        <strong>Thanh phan noi bat</strong>
+                                        <p>@dish.IngredientSummary</p>
+                                    </div>
+                                    <div>
+                                        <strong>Phuc vu / khau phan</strong>
+                                        <p>@dish.ServingSuggestion</p>
+                                    </div>
+                                    <div>
+                                        <strong>Tuy chinh co san</strong>
+                                        <p>@dish.CustomizationSummary</p>
+                                    </div>
+                                </div>
+                            </details>
+                            <div class="dish-card__actions">
+                                <button class="btn btn-ghost btn-small" type="button">Xem chi tiet</button>
+                                <button class="btn btn-accent btn-small" type="button">Them vao gio</button>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        </article>
+
+        <div class="two-column-panels">
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <span class="eyebrow">Goi y them</span>
+                        <h3>Mon mua kem</h3>
+                    </div>
+                    <span class="status-badge muted">AI suggestion</span>
+                </div>
+                <div class="suggestion-stack">
+                    <div class="suggestion-item">
+                        <strong>Combo lau + tra dao + flan</strong>
+                        <span>Giam 12% cho ban 4 nguoi</span>
+                    </div>
+                    <div class="suggestion-item">
+                        <strong>Bo vien pho mai</strong>
+                        <span>Thuong di kem voi lau thai trong 68% don hang tuong tu</span>
+                    </div>
+                    <div class="suggestion-item">
+                        <strong>Khan giay premium</strong>
+                        <span>Co the goi ngay trong khung chat dich vu</span>
+                    </div>
+                </div>
+            </article>
+
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <span class="eyebrow">Danh gia sau bua an</span>
+                        <h3>Popup mau sau thanh toan</h3>
+                    </div>
+                    <span class="rating-score">4.8/5</span>
+                </div>
+                <div class="rating-card">
+                    <div class="rating-stars">
+                        <span class="filled"></span>
+                        <span class="filled"></span>
+                        <span class="filled"></span>
+                        <span class="filled"></span>
+                        <span class="filled"></span>
+                    </div>
+                    <p>Mon an vua vi, ra mon nhanh. Chatbox giup goi them vat dung kha tien.</p>
+                    <button class="btn btn-ghost btn-small" type="button">Gui nhan xet</button>
+                </div>
+            </article>
+        </div>
+    </div>
+
+    <aside class="customer-side">
+        <article class="panel-card sticky-panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">Gio hang chung</span>
+                    <h3>Don tam tinh cua ban A03</h3>
+                </div>
+                <span class="status-badge">4 thanh vien</span>
+            </div>
+            <div class="cart-stack">
+                @foreach (var item in cartItems)
+                {
+                    <div class="cart-item">
+                        <div>
+                            <strong>@item.Name x@item.Qty</strong>
+                            <span>@item.Note</span>
+                        </div>
+                        <strong>@item.Price</strong>
+                    </div>
+                }
+            </div>
+            <div class="bill-box">
+                <div><span>Tam tinh</span><strong>562.000d</strong></div>
+                <div><span>Phi phuc vu</span><strong>22.000d</strong></div>
+                <div><span>Khuyen mai combo</span><strong>-32.000d</strong></div>
+                <div class="bill-box__total"><span>Tong thanh toan</span><strong>552.000d</strong></div>
+            </div>
+            <div class="pay-actions">
+                <button class="btn btn-accent" type="button">Xac nhan gui don</button>
+                <button class="btn btn-ghost" type="button">Yeu cau thanh toan</button>
+            </div>
+            <div class="payment-methods">
+                <span class="mini-tag">Tien mat</span>
+                <span class="mini-tag">QR chuyen khoan</span>
+                <span class="mini-tag">Vi dien tu</span>
+            </div>
+        </article>
+
+        <article class="panel-card">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">Chatbox ho tro</span>
+                    <h3>Hoi dap va yeu cau phuc vu</h3>
+                </div>
+                <span class="status-badge muted">Nhan vien dang online</span>
+            </div>
+            <div class="chat-thread">
+                @foreach (var chat in chatMessages)
+                {
+                    <div class="chat-bubble @(chat.Type == "user" ? "chat-bubble--user" : "chat-bubble--staff")">
+                        <strong>@chat.Sender</strong>
+                        <p>@chat.Content</p>
+                    </div>
+                }
+            </div>
+            <div class="chat-input">
+                <input type="text" value="Nhap yeu cau: them bat, doi mon, hoi thong tin..." readonly />
+                <button class="btn btn-accent btn-small" type="button">Gui</button>
+            </div>
+        </article>
+
+        <article class="panel-card">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">Trang thai don</span>
+                    <h3>Theo doi theo thoi gian thuc</h3>
+                </div>
+            </div>
+            <div class="timeline-stack">
+                @foreach (var item in timeline)
+                {
+                    <div class="timeline-item timeline-item--@item.State">
+                        <span>@item.Time</span>
+                        <strong>@item.Title</strong>
+                    </div>
+                }
+            </div>
+        </article>
+    </aside>
+</section>
+
+

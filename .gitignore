@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+
+# Local SDK/runtime folders
+.dotnet*/
+.appdata*/
+
+# User/runtime data
+data/*.json
+data-protection-keys/
+
+# Logs and temporary files
+*.log
+*.err.log
+*.out.log
+tmp-*.sql
+
+# IDE/editor
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Secrets and local environment
+.env
+.env.*
+appsettings.Local.json
+appsettings.*.Local.json

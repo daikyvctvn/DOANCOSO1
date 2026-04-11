@@ -1,0 +1,211 @@
+@{
+    ViewData["Title"] = "Nhan vien";
+
+    var posCards = new[]
+    {
+        new { Label = "Don moi", Value = "08", Note = "2 don vua vao tu khu san vuon" },
+        new { Label = "Chat cho xu ly", Value = "05", Note = "Da uu tien yeu cau them khan giay" },
+        new { Label = "Ban dang phuc vu", Value = "17", Note = "3 ban sap goi thanh toan" }
+    };
+
+    var newOrders = new[]
+    {
+        new { Table = "Ban A03", Order = "#A03-104", Items = "Lau thai, 2 tra dao, bo nuong", Note = "1/2 cay, khong hanh", Status = "Moi vao" },
+        new { Table = "Ban B03", Order = "#B03-071", Items = "Muc chien, bia tuoi, salad", Note = "Them sot mayo", Status = "Can xac nhan" },
+        new { Table = "Ban C04", Order = "#C04-029", Items = "Com ga nuong, soup bi do", Note = "Tre em, it tieu", Status = "Dang xu ly" }
+    };
+
+    var chatQueue = new[]
+    {
+        new { Table = "Ban A03", Message = "Xin them 2 chen nho va 1 khan giay.", Time = "18:51" },
+        new { Table = "Ban B03", Message = "Cho hoi mon muc chien bao lau nua?", Time = "18:53" },
+        new { Table = "Ban B06", Message = "Toi muon doi nuoc sang it da.", Time = "18:54" }
+    };
+
+    var kitchenColumns = new[]
+    {
+        new
+        {
+            Title = "Cho nau",
+            Cards = new[]
+            {
+                "A03 | Lau thai tom nam",
+                "C04 | Soup bi do",
+                "B03 | Muc chien gion"
+            }
+        },
+        new
+        {
+            Title = "Dang lam",
+            Cards = new[]
+            {
+                "A03 | Bo nuong sot tieu den",
+                "B05 | Mi xao hai san"
+            }
+        },
+        new
+        {
+            Title = "Hoan thanh",
+            Cards = new[]
+            {
+                "A03 | 2 Tra dao cam sa",
+                "B03 | Salad ca ngu"
+            }
+        }
+    };
+
+    var tableStatus = new[]
+    {
+        new { Name = "A01", State = "Trong" },
+        new { Name = "A03", State = "Dang ngoi" },
+        new { Name = "B03", State = "Dang ngoi" },
+        new { Name = "B06", State = "Cho don dep" },
+        new { Name = "C04", State = "Dang ngoi" },
+        new { Name = "B06", State = "Dang ngoi" }
+    };
+}
+
+<section class="page-intro">
+    <div>
+        <span class="eyebrow">Nhan vien phuc vu va bep/bar</span>
+        <h1>Dashboard tiep nhan don moi, chat voi khach va dieu phoi trang thai mon.</h1>
+    </div>
+    <div class="intro-badges">
+        <span class="status-badge">Ca toi 17:00 - 22:00</span>
+        <span class="status-badge muted">18:56 cap nhat gan nhat</span>
+    </div>
+</section>
+
+<section class="metric-row">
+    @foreach (var card in posCards)
+    {
+        <article class="metric-card">
+            <span>@card.Label</span>
+            <strong>@card.Value</strong>
+            <p>@card.Note</p>
+        </article>
+    }
+</section>
+
+<section class="staff-grid">
+    <div class="staff-main">
+        <article class="panel-card">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">POS tiep nhan</span>
+                    <h2>Thong bao don moi</h2>
+                </div>
+                <button class="btn btn-ghost btn-small" type="button">Loc theo khu</button>
+            </div>
+            <div class="order-queue">
+                @foreach (var order in newOrders)
+                {
+                    <div class="order-ticket">
+                        <div class="order-ticket__top">
+                            <div>
+                                <strong>@order.Table</strong>
+                                <span>@order.Order</span>
+                            </div>
+                            <span class="status-badge">@order.Status</span>
+                        </div>
+                        <p>@order.Items</p>
+                        <small>Tuy chinh: @order.Note</small>
+                        <div class="ticket-actions">
+                            <button class="btn btn-accent btn-small" type="button">Nhan don</button>
+                            <button class="btn btn-ghost btn-small" type="button">Chuyen bep</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </article>
+
+        <article class="panel-card">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">Man hinh bep/bar</span>
+                    <h2>Trang thai che bien</h2>
+                </div>
+                <span class="status-badge muted">Cap nhat real-time</span>
+            </div>
+            <div class="kitchen-board">
+                @foreach (var column in kitchenColumns)
+                {
+                    <div class="kitchen-column">
+                        <h3>@column.Title</h3>
+                        @foreach (var card in column.Cards)
+                        {
+                            <div class="kitchen-ticket">@card</div>
+                        }
+                    </div>
+                }
+            </div>
+        </article>
+    </div>
+
+    <aside class="staff-side">
+        <article class="panel-card">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">Hoi thoai</span>
+                    <h3>Yeu cau chat dang cho</h3>
+                </div>
+                <span class="status-badge">3 uu tien cao</span>
+            </div>
+            <div class="service-list">
+                @foreach (var chat in chatQueue)
+                {
+                    <div class="service-item">
+                        <div class="service-item__meta">
+                            <strong>@chat.Table</strong>
+                            <span>@chat.Time</span>
+                        </div>
+                        <p>@chat.Message</p>
+                        <button class="text-link" type="button">Tra loi nhanh</button>
+                    </div>
+                }
+            </div>
+        </article>
+
+        <article class="panel-card">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">Tinh trang ban</span>
+                    <h3>Cap nhat so do khu vuc</h3>
+                </div>
+            </div>
+            <div class="table-grid">
+                @foreach (var table in tableStatus)
+                {
+                    <div class="table-chip table-chip--@(table.State == "Dang ngoi" ? "active" : table.State == "Cho don dep" ? "warning" : "idle")">
+                        <strong>@table.Name</strong>
+                        <span>@table.State</span>
+                    </div>
+                }
+            </div>
+        </article>
+
+        <article class="panel-card">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">Yeu cau dich vu</span>
+                    <h3>Ngoai menu</h3>
+                </div>
+            </div>
+            <div class="service-list">
+                <div class="service-item">
+                    <strong>Ban A03</strong>
+                    <p>Them 4 bat, 1 muoi tieu chanh.</p>
+                </div>
+                <div class="service-item">
+                    <strong>Ban B06</strong>
+                    <p>Muon doi mon nuoc sang it duong.</p>
+                </div>
+                <div class="service-item">
+                    <strong>Ban B10</strong>
+                    <p>Khach vua roi ban, can don dep gap.</p>
+                </div>
+            </div>
+        </article>
+    </aside>
+</section>
+

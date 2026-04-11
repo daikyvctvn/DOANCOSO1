@@ -1,0 +1,60 @@
+@model TableOrderWeb.Models.RegisterViewModel
+@{
+    ViewData["Title"] = "Dang ky";
+}
+
+<section class="auth-wrap">
+    <article class="auth-card">
+        <span class="eyebrow">Tao tai khoan</span>
+        <h1>Dang ky</h1>
+        <p>Tao tai khoan moi de dang nhap vao man hinh Nhan vien hoac Quan tri.</p>
+        <p>Luu y: he thong chi cho phep duy nhat 1 tai khoan Quan tri.</p>
+
+        <form method="post" class="auth-form">
+            @Html.AntiForgeryToken()
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <label class="auth-field">
+                <span>Ten hien thi</span>
+                <input asp-for="DisplayName" placeholder="Vi du: Nguyen Lan" />
+                <span asp-validation-for="DisplayName" class="text-danger"></span>
+            </label>
+
+            <label class="auth-field">
+                <span>Ten dang nhap</span>
+                <input asp-for="UserName" placeholder="Vi du: lan.staff" />
+                <span asp-validation-for="UserName" class="text-danger"></span>
+            </label>
+
+            <label class="auth-field">
+                <span>Vai tro</span>
+                <select asp-for="Role">
+                    <option value="Staff">Nhan vien</option>
+                    <option value="Admin">Quan tri</option>
+                </select>
+                <span asp-validation-for="Role" class="text-danger"></span>
+            </label>
+
+            <label class="auth-field">
+                <span>Mat khau</span>
+                <input asp-for="Password" placeholder="Toi thieu 6 ky tu" />
+                <span asp-validation-for="Password" class="text-danger"></span>
+            </label>
+
+            <label class="auth-field">
+                <span>Nhap lai mat khau</span>
+                <input asp-for="ConfirmPassword" placeholder="Nhap lai mat khau" />
+                <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
+            </label>
+
+            <div class="auth-actions">
+                <button class="btn btn-accent" type="submit">Dang ky</button>
+                <a class="btn btn-ghost" asp-controller="Account" asp-action="Login">Da co tai khoan</a>
+            </div>
+        </form>
+    </article>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

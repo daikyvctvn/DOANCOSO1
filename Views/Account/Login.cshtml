@@ -1,0 +1,44 @@
+@model TableOrderWeb.Models.LoginViewModel
+@{
+    ViewData["Title"] = "Dang nhap";
+}
+
+<section class="auth-wrap">
+    <article class="auth-card">
+        <span class="eyebrow">Tai khoan he thong</span>
+        <h1>Dang nhap</h1>
+        <p>Dang nhap de vao man hinh Nhan vien hoac Quan tri.</p>
+
+        @if (TempData["AuthMessage"] is string message)
+        {
+            <div class="auth-alert success">@message</div>
+        }
+
+        <form method="post" class="auth-form">
+            @Html.AntiForgeryToken()
+            <input asp-for="ReturnUrl" type="hidden" />
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <label class="auth-field">
+                <span>Ten dang nhap</span>
+                <input asp-for="UserName" placeholder="Vi du: lan.staff" />
+                <span asp-validation-for="UserName" class="text-danger"></span>
+            </label>
+
+            <label class="auth-field">
+                <span>Mat khau</span>
+                <input asp-for="Password" placeholder="Nhap mat khau" />
+                <span asp-validation-for="Password" class="text-danger"></span>
+            </label>
+
+            <div class="auth-actions">
+                <button class="btn btn-accent" type="submit">Dang nhap</button>
+                <a class="btn btn-ghost" asp-controller="Account" asp-action="Register">Dang ky</a>
+            </div>
+        </form>
+    </article>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

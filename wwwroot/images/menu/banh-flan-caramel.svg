@@ -1,0 +1,15 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#5c845e"/>
+      <stop offset="100%" stop-color="#c6ddbc"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <ellipse cx="400" cy="385" rx="180" ry="56" fill="#86603a" opacity="0.16"/>
+  <ellipse cx="400" cy="350" rx="175" ry="64" fill="#fbf5ea"/>
+  <ellipse cx="400" cy="330" rx="118" ry="82" fill="#f0c788"/>
+  <path d="M320 298c46-58 114-54 161 0-18 40-44 64-81 80-36-14-61-38-80-80z" fill="#f6dfb7" opacity="0.9"/>
+  <path d="M306 295c69-32 125-36 188 0" fill="none" stroke="#8e4d2d" stroke-width="20" stroke-linecap="round"/>
+  <text x="58" y="78" fill="#fefcf6" font-size="34" font-family="Segoe UI, Arial, sans-serif" font-weight="700">BANH FLAN CARAMEL</text>
+</svg>

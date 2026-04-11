@@ -1,0 +1,13 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#7f3218"/>
+      <stop offset="100%" stop-color="#e3a45a"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <rect x="150" y="170" width="500" height="260" rx="40" fill="#fff8ef" opacity="0.9"/>
+  <rect x="190" y="210" width="420" height="180" rx="28" fill="#f7d8b5" opacity="0.9"/>
+  <text x="400" y="300" text-anchor="middle" fill="#7f3218" font-size="54" font-family="Segoe UI, Arial, sans-serif" font-weight="700">MON AN</text>
+  <text x="400" y="355" text-anchor="middle" fill="#9a5d34" font-size="24" font-family="Segoe UI, Arial, sans-serif">Them anh vao menu tai trang Admin</text>
+</svg>
