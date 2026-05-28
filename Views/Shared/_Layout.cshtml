@@ -1,22 +1,28 @@
-﻿@{
+@{
+    var controller = ViewContext.RouteData.Values["controller"]?.ToString() ?? "Home";
     var action = ViewContext.RouteData.Values["action"]?.ToString() ?? "Index";
     var isAuthenticated = User?.Identity?.IsAuthenticated ?? false;
     var currentName = User?.Identity?.Name ?? string.Empty;
     var currentRole = User?.Claims.FirstOrDefault(x => x.Type == System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
+    var routeTableCode = ViewContext.RouteData.Values["tableCode"]?.ToString()
+        ?? Context.Request.Query["tableCode"].FirstOrDefault()
+        ?? "A01";
+    var isCustomerExperience = string.Equals(controller, "Home", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(action, "Customer", StringComparison.OrdinalIgnoreCase)
+        && !isAuthenticated;
 }
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - Muc Nhan Table</title>
+    <title>@ViewData["Title"] - Mục Nhân Table</title>
     <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/TableOrderWeb.styles.css" asp-append-version="true" />
     <style>
         html { font-size: 16px; min-height: 100%; }
-        body { min-height: 100vh; margin: 0; color: #25190e; font-family: "Trebuchet MS", "Segoe UI", sans-serif; background: radial-gradient(circle at top left, rgba(208, 139, 46, 0.18), transparent 28%), radial-gradient(circle at top right, rgba(189, 93, 56, 0.14), transparent 32%), linear-gradient(180deg, #fffdf8 0%, #f8f1e5 100%); }
+        body { min-height: 100vh; margin: 0; color: #25190e; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background: radial-gradient(circle at top left, rgba(208, 139, 46, 0.18), transparent 28%), radial-gradient(circle at top right, rgba(189, 93, 56, 0.14), transparent 32%), linear-gradient(180deg, #fffdf8 0%, #f8f1e5 100%); }
         a { color: inherit; text-decoration: none; }
         .container { max-width: 1320px; margin: 0 auto; padding: 0 20px; }
         .app-header { position: sticky; top: 0; z-index: 30; backdrop-filter: blur(14px); background: rgba(255, 248, 239, 0.82); border-bottom: 1px solid rgba(82, 55, 27, 0.12); }
@@ -24,6 +30,9 @@
         .brand-mark, .app-nav, .header-actions, .header-user, .page-intro, .intro-badges, .toolbar-row, .sort-group, .category-row, .option-row, .dish-card__header, .dish-card__actions, .panel-heading, .pay-actions, .payment-methods { display: flex; align-items: center; gap: 0.75rem; }
         .brand-mark__logo, .header-chip, .status-badge, .mini-tag, .category-pill, .filter-chip, .btn { border-radius: 999px; }
         .brand-mark__logo { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; background: linear-gradient(135deg, #bd5d38, #d08b2e); color: #fff; font-weight: 700; }
+        .brand-mark__spice-logo { display: grid; gap: 0.28rem; min-width: 15rem; text-align: center; }
+        .brand-mark__spice-name { display: flex; align-items: baseline; justify-content: center; gap: 0.42rem; color: #d08b2e; font-family: Georgia, "Times New Roman", serif; font-size: 1.62rem; line-height: 1; font-weight: 400; letter-spacing: 0; }
+        .brand-mark__spice-tagline { color: #77716c; font-size: 0.66rem; font-weight: 600; line-height: 1; letter-spacing: 0; word-spacing: 0.55rem; }
         .app-nav a, .header-chip, .status-badge, .mini-tag, .category-pill, .filter-chip { padding: 0.65rem 1rem; background: rgba(255,255,255,0.66); border: 1px solid rgba(82, 55, 27, 0.12); }
         .app-nav a.active, .category-pill.active, .filter-chip.active { background: #fff7ef; font-weight: 700; }
         .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.9rem 1.25rem; border: 1px solid rgba(82, 55, 27, 0.12); background: #fff; cursor: pointer; }
@@ -38,6 +47,8 @@
         .intro-badges { flex-wrap: wrap; justify-content: flex-end; }
         .customer-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 0.95fr); gap: 1.5rem; }
         .customer-main, .customer-side, .two-column-panels, .suggestion-stack, .cart-stack, .chat-thread, .timeline-stack { display: grid; gap: 1.5rem; }
+        .customer-side { align-self: start; }
+        .customer-side--sticky { position: sticky; top: 96px; max-height: calc(100vh - 120px); overflow-y: auto; overscroll-behavior: contain; padding-right: 0.2rem; }
         .two-column-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .panel-card, .dish-card { background: rgba(255, 252, 246, 0.82); border: 1px solid rgba(82, 55, 27, 0.12); border-radius: 22px; box-shadow: 0 18px 45px rgba(69, 42, 18, 0.12); overflow: hidden; }
         .panel-card { padding: 1.25rem; }
@@ -54,7 +65,7 @@
         .search-box input, .chat-input input { width: 100%; padding: 0.95rem 1rem; border-radius: 16px; border: 1px solid rgba(82, 55, 27, 0.12); background: #fffdf9; }
         .toolbar-row, .qr-summary, .chat-input { display: grid; gap: 1rem; }
         .chat-bubble, .timeline-item, .cart-item, .suggestion-item, .bill-box { padding: 1rem; border-radius: 16px; background: rgba(255,255,255,0.7); border: 1px solid rgba(82, 55, 27, 0.12); }
-        .sticky-panel { position: sticky; top: 96px; }
+        .sticky-panel { position: sticky; top: 96px; max-height: calc(100vh - 120px); overflow-y: auto; overscroll-behavior: contain; }
         @@media (max-width: 980px) { .customer-grid, .two-column-panels, .menu-grid, .app-header__inner, .page-intro { grid-template-columns: 1fr; display: grid; } .app-nav, .header-actions, .intro-badges { flex-wrap: wrap; } }
     </style>
 </head>
@@ -62,38 +73,60 @@
     <div class="app-shell">
         <header class="app-header">
             <div class="container app-header__inner">
-                <a class="brand-mark" asp-area="" asp-controller="Home" asp-action="Index">
-                    <span class="brand-mark__logo">MN</span>
-                    <span>
-                        <strong>Muc Nhan Table</strong>
-                        <small>Menu QR, chatbox va POS cho quan an</small>
+                <a class="brand-mark"
+                   asp-area=""
+                   asp-controller="Home"
+                   asp-action="@(isCustomerExperience ? "Customer" : "Index")"
+                   asp-route-tableCode="@(isCustomerExperience ? routeTableCode : null)">
+                    <span class="brand-mark__spice-logo" aria-label="Spice Temple Thai Inspired">
+                        <span class="brand-mark__spice-name">
+                            <span>SPICE</span>
+                            <span>TEMPLE</span>
+                        </span>
+                        <span class="brand-mark__spice-tagline">THAI INSPIRED</span>
                     </span>
                 </a>
-                <nav class="app-nav">
-                    <a class="@(action == "Index" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Index">Tong quan</a>
-                    <a class="@(action == "Customer" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Customer">Khach tai ban</a>
-                    <a class="@(action == "Staff" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Staff">Nhan vien</a>
-                    <a class="@(action == "Admin" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Admin">Quan tri</a>
-                </nav>
-                <div class="header-actions">
-                    @if (isAuthenticated)
-                    {
-                        <div class="header-user">
-                            <strong>@currentName</strong>
-                            <small>@currentRole</small>
-                        </div>
-                        <form asp-controller="Account" asp-action="Logout" method="post">
-                            @Html.AntiForgeryToken()
-                            <button class="btn btn-ghost btn-small" type="submit">Dang xuat</button>
-                        </form>
-                    }
-                    else
-                    {
-                        <a class="btn btn-ghost btn-small" asp-controller="Account" asp-action="Login">Dang nhap</a>
-                        <a class="btn btn-accent btn-small" asp-controller="Account" asp-action="Register">Dang ky</a>
-                    }
-                    <div class="header-chip">Demo UI ASP.NET Core MVC</div>
-                </div>
+
+                @if (isCustomerExperience)
+                {
+                    <div class="header-actions">
+                        <div class="header-chip">Bàn @routeTableCode</div>
+                    </div>
+                }
+                else
+                {
+                    <nav class="app-nav">
+                        <a class="@(action == "Index" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Index">Tổng quan</a>
+                        @if (isAuthenticated)
+                        {
+                            <a class="@(action == "Restaurant" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Restaurant">Nh&agrave; h&agrave;ng</a>
+                            <a class="@(action == "Staff" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Staff">Nhân viên</a>
+                            @if (string.Equals(currentRole, "Admin", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <a class="@(action == "Admin" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Admin">Quản trị</a>
+                            }
+                        }
+                    </nav>
+                    <div class="header-actions">
+                        @if (isAuthenticated)
+                        {
+                            <div class="header-user">
+                                <strong>@currentName</strong>
+                                <small>@currentRole</small>
+                            </div>
+                            <form asp-controller="Account" asp-action="Logout" method="post">
+                                @Html.AntiForgeryToken()
+                                <button class="btn btn-ghost btn-small" type="submit">Đăng xuất</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <a class="btn btn-ghost btn-small" asp-controller="Account" asp-action="Login">Đăng nhập</a>
+                            <a class="btn btn-accent btn-small" asp-controller="Account" asp-action="Register">Đăng ký</a>
+                        }
+                        <div class="header-chip">Demo UI ASP.NET Core MVC</div>
+                    </div>
+                }
             </div>
         </header>
         <main class="app-main">
@@ -109,4 +142,3 @@
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
-

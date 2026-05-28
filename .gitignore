@@ -5,6 +5,10 @@ obj/
 # Local SDK/runtime folders
 .dotnet*/
 .appdata*/
+.codexbin/
+.net8run/
+.runbin/
+.runbin2/
 
 # User/runtime data
 data/*.json

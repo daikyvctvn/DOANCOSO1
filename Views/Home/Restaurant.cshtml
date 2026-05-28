@@ -1,0 +1,232 @@
+@model TableOrderWeb.Models.RestaurantPageViewModel
+@{
+    ViewData["Title"] = "Nhà hàng";
+    var defaultTable = Model.Tables.FirstOrDefault();
+}
+
+<div data-auto-refresh-url="@Url.Action("Restaurant")" data-auto-refresh-seconds="20" data-restaurant-board>
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="auth-alert success admin-alert">@Model.StatusMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="auth-alert admin-alert">@Model.ErrorMessage</div>
+    }
+
+    <section class="restaurant-workspace">
+        <aside class="restaurant-detail-panel">
+            <div class="restaurant-detail-panel__head">
+                <span class="eyebrow">Chi tiết bàn</span>
+                <h2 data-selected-table-name>Bàn @(defaultTable?.TableCode ?? "--")</h2>
+                <small data-selected-table-state>@(defaultTable?.State ?? "Chưa chọn bàn")</small>
+            </div>
+            <div class="restaurant-detail-panel__table">
+                <div class="restaurant-detail-row restaurant-detail-row--head">
+                    <span>SL</span>
+                    <span>Hàng bán</span>
+                    <span>Tiền hàng</span>
+                </div>
+                <div class="restaurant-detail-items" data-selected-table-items>
+                    @if (defaultTable is null || defaultTable.DetailedItems.Count == 0)
+                    {
+                        <div class="checkout-item checkout-item--empty"></div>
+                    }
+                    else
+                    {
+                        @foreach (var item in defaultTable.DetailedItems)
+                        {
+                            <div class="checkout-item">
+                                <div>
+                                    <strong>@item.Name x@(item.Quantity)</strong>
+                                    @if (!string.IsNullOrWhiteSpace(item.Note))
+                                    {
+                                        <small>@item.Note</small>
+                                    }
+                                </div>
+                                <span>@item.LineTotal.ToString("N0")đ</span>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+            <div class="restaurant-detail-panel__totals">
+                <div><span>Tiền hàng</span><strong data-selected-table-amount>@(defaultTable?.OutstandingTotal.ToString("N0") ?? "0")đ</strong></div>
+                <div><span>Giảm giá</span><strong>0đ</strong></div>
+                <div><span>Phí PV</span><strong>0đ</strong></div>
+            </div>
+        </aside>
+
+        <section class="restaurant-grid">
+            @foreach (var table in Model.Tables)
+            {
+                <article class="restaurant-table-card @(table.HasActiveOrder ? "restaurant-table-card--active" : "restaurant-table-card--idle")"
+                         data-table-card
+                         data-table-code="@table.TableCode"
+                         data-table-name="Bàn @table.TableCode"
+                         data-table-state="@table.State"
+                         data-table-amount="@table.OutstandingTotal.ToString("N0")đ"
+                         data-table-total-raw="@table.OutstandingTotal.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                         data-has-active-order="@table.HasActiveOrder.ToString().ToLowerInvariant()"
+                         tabindex="0">
+                    <div class="restaurant-table-card__top">
+                        <span class="restaurant-table-card__label">Bàn</span>
+                        <strong>@table.TableCode</strong>
+                    </div>
+                    <div class="restaurant-table-card__amount">
+                        <span>Số tiền</span>
+                        <strong>@table.OutstandingTotal.ToString("N0")đ</strong>
+                    </div>
+                </article>
+            }
+        </section>
+    </section>
+
+    <div class="restaurant-table-details-store" hidden>
+        @foreach (var table in Model.Tables)
+        {
+            <div data-table-details="@table.TableCode">
+                @if (table.DetailedItems.Count == 0)
+                {
+                    <div class="checkout-item checkout-item--empty"></div>
+                }
+                else
+                {
+                    @foreach (var item in table.DetailedItems)
+                    {
+                        <div class="checkout-item">
+                            <div>
+                                <strong>@item.Name x@(item.Quantity)</strong>
+                                @if (!string.IsNullOrWhiteSpace(item.Note))
+                                {
+                                    <small>@item.Note</small>
+                                }
+                            </div>
+                            <span>@item.LineTotal.ToString("N0")đ</span>
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+
+    @if (defaultTable is not null)
+    {
+        <section class="restaurant-action-bar"
+                 data-restaurant-action-bar
+                 data-default-table-code="@defaultTable.TableCode"
+                 data-default-has-active-order="@defaultTable.HasActiveOrder.ToString().ToLowerInvariant()">
+            <div class="restaurant-action-bar__summary">
+                <span class="eyebrow">Thanh chức năng</span>
+                <strong data-selected-table-name>Bàn @defaultTable.TableCode</strong>
+                <small data-selected-table-state>@defaultTable.State</small>
+                <span class="restaurant-action-bar__amount" data-selected-table-amount>@defaultTable.OutstandingTotal.ToString("N0")đ</span>
+            </div>
+
+            <div class="restaurant-action-bar__actions">
+                <a class="btn btn-accent"
+                   data-add-dish-link
+                   asp-action="Customer"
+                   asp-route-tableCode="@defaultTable.TableCode">Thêm món</a>
+
+                <button class="btn btn-ghost" type="button" data-payment-button @(defaultTable.HasActiveOrder ? null : "disabled")>
+                    Thanh toán
+                </button>
+            </div>
+        </section>
+
+        <div class="checkout-modal" data-checkout-modal hidden>
+            <div class="checkout-modal__backdrop" data-checkout-close></div>
+            <section class="checkout-modal__panel">
+                <div class="checkout-modal__header">
+                    <div>
+                        <span class="eyebrow">Thanh toán bàn</span>
+                        <h2 data-checkout-table-name>Bàn @defaultTable.TableCode</h2>
+                        <small data-checkout-table-state>@defaultTable.State</small>
+                    </div>
+                    <button class="btn btn-ghost btn-small" type="button" data-checkout-close>Đóng</button>
+                </div>
+
+                <div class="checkout-modal__content">
+                    <div class="checkout-modal__items">
+                        <div class="checkout-modal__subhead">
+                            <strong>Chi tiết món</strong>
+                            <span data-checkout-total>@defaultTable.OutstandingTotal.ToString("N0")đ</span>
+                        </div>
+                        <div class="checkout-items-list" data-checkout-items>
+                            @if (defaultTable.DetailedItems.Count == 0)
+                            {
+                                <div class="checkout-item checkout-item--empty"></div>
+                            }
+                            else
+                            {
+                                @foreach (var item in defaultTable.DetailedItems)
+                                {
+                                    <div class="checkout-item">
+                                        <div>
+                                            <strong>@item.Name x@(item.Quantity)</strong>
+                                            @if (!string.IsNullOrWhiteSpace(item.Note))
+                                            {
+                                                <small>@item.Note</small>
+                                            }
+                                        </div>
+                                        <span>@item.LineTotal.ToString("N0")đ</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    <form asp-action="CheckoutTable" method="post" class="checkout-form" data-payment-form>
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="TableCode" value="@defaultTable.TableCode" data-payment-table-code />
+                        <label class="restaurant-payment-form__field">
+                            <span>Tổng thanh toán</span>
+                            <input type="text" value="@defaultTable.OutstandingTotal.ToString("N0")đ" data-checkout-total-readonly readonly />
+                        </label>
+                        <div class="restaurant-payment-form__field">
+                            <span>Các hình thức thanh toán</span>
+                            <div class="payment-rows" data-payment-rows>
+                                <div class="payment-row" data-payment-row>
+                                    <select name="PaymentMethods[0]" data-payment-method>
+                                        <option value="cash">Tiền mặt</option>
+                                        <option value="bankqr">Chuyển khoản QR</option>
+                                        <option value="ewallet">Ví điện tử</option>
+                                    </select>
+                                    <input name="PaymentAmounts[0]"
+                                           type="number"
+                                           min="0"
+                                           step="any"
+                                           placeholder="@defaultTable.OutstandingTotal.ToString("N0")đ"
+                                           data-payment-amount />
+                                    <button class="btn btn-ghost btn-small" type="button" data-accept-payment-row>Chấp nhận</button>
+                                    <button class="btn btn-ghost btn-small" type="button" data-remove-payment-row disabled>Xóa</button>
+                                </div>
+                            </div>
+                            <button class="btn btn-ghost btn-small payment-rows__add" type="button" data-add-payment-row>Thêm hình thức</button>
+                        </div>
+                        <label class="restaurant-payment-form__field">
+                            <span>Tổng khách trả</span>
+                            <input type="text" value="0đ" data-paid-total-display readonly />
+                        </label>
+                        <label class="restaurant-payment-form__field">
+                            <span data-balance-label>Còn thiếu</span>
+                            <input type="text" value="0đ" data-change-display readonly />
+                        </label>
+                        <label class="restaurant-payment-form__field restaurant-payment-form__field--note">
+                            <span>Ghi chú</span>
+                            <input name="Note" placeholder="VD: khách đưa 500k" />
+                        </label>
+                        <div class="checkout-form__actions">
+                            <button class="btn btn-ghost" type="button" data-checkout-close>Hủy</button>
+                            <button class="btn btn-accent" type="submit" data-checkout-submit @(defaultTable.HasActiveOrder ? null : "disabled")>
+                                Xác nhận thanh toán
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+        </div>
+    }
+</div>

@@ -22,13 +22,13 @@ public sealed class FileUserAccountService : IUserAccountService
         var role = NormalizeRole(model.Role);
         if (role is null)
         {
-            return (false, "Vai tro khong hop le.");
+            return (false, "Vai trò không hợp lệ.");
         }
 
         var normalizedUserName = NormalizeUserName(model.UserName);
         if (string.IsNullOrWhiteSpace(normalizedUserName))
         {
-            return (false, "Ten dang nhap khong hop le.");
+            return (false, "Tên đăng nhập không hợp lệ.");
         }
 
         await _lock.WaitAsync(cancellationToken);
@@ -37,12 +37,12 @@ public sealed class FileUserAccountService : IUserAccountService
             var users = await ReadUsersAsync(cancellationToken);
             if (users.Any(x => string.Equals(x.UserName, normalizedUserName, StringComparison.OrdinalIgnoreCase)))
             {
-                return (false, "Ten dang nhap da ton tai.");
+                return (false, "Tên đăng nhập đã tồn tại.");
             }
 
             if (role == "Admin" && users.Any(x => string.Equals(x.Role, "Admin", StringComparison.OrdinalIgnoreCase)))
             {
-                return (false, "He thong chi cho phep duy nhat 1 tai khoan Quan tri.");
+                return (false, "Hệ thống chỉ cho phép duy nhất 1 tài khoản Quản trị.");
             }
 
             CreatePasswordHash(model.Password, out var hash, out var salt);

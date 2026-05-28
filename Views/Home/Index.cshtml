@@ -1,116 +1,71 @@
 @{
-    ViewData["Title"] = "Tong quan";
+    ViewData["Title"] = "Tổng quan";
 
-    var highlights = new[]
+    var gallerySlides = new[]
     {
-        new { Number = "01", Title = "Khach quet QR", Description = "Vao menu ngay tren trinh duyet, tu dong nhan dien so ban va tao gio hang chung cho ca nhom." },
-        new { Number = "02", Title = "Don va chat real-time", Description = "Mon moi, ghi chu tuy chinh, va yeu cau phuc vu duoc day sang POS, bep va khung chat trong thoi gian thuc." },
-        new { Number = "03", Title = "Quan ly tap trung", Description = "Chu quan theo doi doanh thu, QR tung ban, lich su hoi thoai, mon ban chay va trang thai ban." }
-    };
-
-    var modules = new[]
-    {
-        new { Title = "Khach tai ban", Subtitle = "Mobile-first menu", Copy = "Menu dien tu, gio hang chung, chatbox, thanh toan va danh gia sau bua an.", Action = "Customer", Metric = "Ban 08 dang goi 6 mon" },
-        new { Title = "Nhan vien & Bep", Subtitle = "POS van hanh", Copy = "Nhan thong bao don moi, chat yeu cau bo sung, quan ly hang doi bep/bar va tinh trang tung ban.", Action = "Staff", Metric = "4 don moi | 2 mon sap xong" },
-        new { Title = "Quan tri", Subtitle = "Dieu hanh cua hang", Copy = "Quan ly menu, gia, QR, hoa don, bao cao ca/ngay/thang va chat history.", Action = "Admin", Metric = "Doanh thu hom nay 18.4 tr" }
-    };
-
-    var featureTags = new[]
-    {
-        "QR tai ban",
-        "Menu co tuy chinh",
-        "Gio hang dung chung",
-        "Chat truc tiep voi nhan vien",
-        "Thanh toan qua web",
-        "Dashboard bep/bar",
-        "Quan ly ban",
-        "Thong ke doanh thu"
+        new { ImageUrl = "/images/gallery/anh-1.jpg", Title = "Anh ca nhan 01" },
+        new { ImageUrl = "/images/gallery/anh-2.jpg", Title = "Anh ca nhan 02" },
+        new { ImageUrl = "/images/gallery/anh-3.jpg", Title = "Anh ca nhan 03" },
+        new { ImageUrl = "/images/gallery/anh-4.jpg", Title = "Anh ca nhan 04" },
+        new { ImageUrl = "/images/gallery/anh-5.jpg", Title = "Anh ca nhan 05" },
+        new { ImageUrl = "/images/gallery/anh-6.jpg", Title = "Anh ca nhan 06" }
     };
 }
 
-<section class="hero-panel">
-    <div class="hero-panel__content">
-        <span class="eyebrow">ASP.NET Core Web App UI Concept</span>
-        <h1>Website chon mon tai ban cho quan an, tich hop chatbox va van hanh theo thoi gian thuc.</h1>
-        <p>
-            Ban giao dien nay duoc dung de demo luong nghiep vu truoc: khach quet QR, xem menu, dat mon, nhan vien xu ly POS,
-            bep cap nhat mon hoan thanh, admin theo doi menu va doanh thu.
-        </p>
-        <div class="hero-actions">
-            <a class="btn btn-accent" asp-controller="Home" asp-action="Customer">Xem giao dien khach hang</a>
-            <a class="btn btn-ghost" asp-controller="Home" asp-action="Staff">Xem man hinh nhan vien</a>
-        </div>
-        <div class="tag-row">
-            @foreach (var tag in featureTags)
+<section class="section-block">
+    <div id="overviewGallery" class="carousel slide gallery-carousel" data-bs-ride="carousel" data-bs-interval="4500">
+        <div class="carousel-indicators gallery-carousel__indicators">
+            @for (var i = 0; i < gallerySlides.Length; i++)
             {
-                <span class="tag-chip">@tag</span>
+                <button type="button"
+                        data-bs-target="#overviewGallery"
+                        data-bs-slide-to="@i"
+                        class="@(i == 0 ? "active" : "")"
+                        aria-current="@(i == 0 ? "true" : null)"
+                        aria-label="Anh @(i + 1)"></button>
             }
         </div>
-    </div>
-    <div class="hero-panel__visual">
-        <div class="device-preview">
-            <div class="device-preview__top">
-                <span class="signal-pill">Ban A12</span>
-                <span class="signal-pill muted">QR verified</span>
-            </div>
-            <div class="preview-card preview-card--warm">
-                <strong>Lau thai tom</strong>
-                <small>Nhieu nguoi dang goi kem tra dao va bo vien pho mai</small>
-            </div>
-            <div class="preview-chat">
-                <div class="preview-chat__bubble from-user">Ban minh xin them 4 chen nho.</div>
-                <div class="preview-chat__bubble from-staff">Da nhan yeu cau, nhan vien se mang ra trong 2 phut.</div>
-            </div>
-            <div class="mini-kpis">
-                <div>
-                    <strong>03 phut</strong>
-                    <span>Thoi gian xu ly yeu cau</span>
-                </div>
-                <div>
-                    <strong>92%</strong>
-                    <span>Don hoan thanh dung thu tu</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section class="section-block">
-    <div class="section-heading">
-        <span class="eyebrow">Luong nghiep vu</span>
-        <h2>Ban demo bao phu 3 vai tro chinh trong cua hang</h2>
-    </div>
-    <div class="highlight-grid">
-        @foreach (var item in highlights)
-        {
-            <article class="highlight-card">
-                <span class="highlight-card__number">@item.Number</span>
-                <h3>@item.Title</h3>
-                <p>@item.Description</p>
-            </article>
-        }
-    </div>
-</section>
-
-<section class="section-block">
-    <div class="section-heading">
-        <span class="eyebrow">Module giao dien</span>
-        <h2>Chon man hinh can trinh bay</h2>
-    </div>
-    <div class="module-grid">
-        @foreach (var module in modules)
-        {
-            <article class="module-card">
-                <div class="module-card__top">
-                    <div>
-                        <span class="eyebrow">@module.Subtitle</span>
-                        <h3>@module.Title</h3>
+        <div class="carousel-inner">
+            @for (var i = 0; i < gallerySlides.Length; i++)
+            {
+                var slide = gallerySlides[i];
+                <div class="carousel-item @(i == 0 ? "active" : "")">
+                    <div class="gallery-slide">
+                        <img src="@slide.ImageUrl" alt="@slide.Title" onerror="this.onerror=null;this.src='/images/gallery/placeholder.svg';" />
+                        <div class="gallery-slide__copy">
+                            <span>0@(i + 1)</span>
+                        </div>
                     </div>
-                    <span class="status-badge">@module.Metric</span>
                 </div>
-                <p>@module.Copy</p>
-                <a class="text-link" asp-controller="Home" asp-action="@module.Action">Mo man hinh</a>
-            </article>
-        }
+            }
+        </div>
+        <button class="carousel-control-prev gallery-carousel__control gallery-carousel__control--prev" type="button" data-bs-target="#overviewGallery" data-bs-slide="prev">
+            <span aria-hidden="true">&lsaquo;</span>
+            <span class="visually-hidden">Anh truoc</span>
+        </button>
+        <button class="carousel-control-next gallery-carousel__control gallery-carousel__control--next" type="button" data-bs-target="#overviewGallery" data-bs-slide="next">
+            <span aria-hidden="true">&rsaquo;</span>
+            <span class="visually-hidden">Anh tiep theo</span>
+        </button>
+        <button class="gallery-carousel__hitbox gallery-carousel__hitbox--prev" type="button" data-bs-target="#overviewGallery" data-bs-slide="prev">
+            <span class="visually-hidden">Anh truoc</span>
+        </button>
+        <button class="gallery-carousel__hitbox gallery-carousel__hitbox--next" type="button" data-bs-target="#overviewGallery" data-bs-slide="next">
+            <span class="visually-hidden">Anh tiep theo</span>
+        </button>
+    </div>
+</section>
+
+<section class="spice-footer-logo" aria-label="Spice Temple Thai Inspired">
+    <div class="spice-footer-logo__mark">
+        <div class="spice-footer-logo__name">
+            <span>SPICE</span>
+            <span>TEMPLE</span>
+        </div>
+        <div class="spice-footer-logo__tagline">THAI INSPIRED</div>
+    </div>
+    <div class="spice-footer-logo__hours">
+        <span>MONDAY - SUNDAY</span>
+        <strong>10:30 AM - 10:00 PM</strong>
     </div>
 </section>

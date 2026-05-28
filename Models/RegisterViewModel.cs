@@ -4,22 +4,22 @@ namespace TableOrderWeb.Models;
 
 public sealed class RegisterViewModel
 {
-    [Required(ErrorMessage = "Nhap ten hien thi.")]
+    [Required(ErrorMessage = "Nhập tên hiển thị.")]
     public string DisplayName { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Nhap ten dang nhap.")]
+    [Required(ErrorMessage = "Nhập tên đăng nhập.")]
     public string UserName { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Nhap mat khau.")]
+    [Required(ErrorMessage = "Nhập mật khẩu.")]
     [DataType(DataType.Password)]
-    [MinLength(6, ErrorMessage = "Mat khau toi thieu 6 ky tu.")]
+    [MinLength(6, ErrorMessage = "Mật khẩu tối thiểu 6 ký tự.")]
     public string Password { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Nhap lai mat khau.")]
+    [Required(ErrorMessage = "Nhập lại mật khẩu.")]
     [DataType(DataType.Password)]
-    [Compare(nameof(Password), ErrorMessage = "Mat khau nhap lai khong khop.")]
+    [Compare(nameof(Password), ErrorMessage = "Mật khẩu nhập lại không khớp.")]
     public string ConfirmPassword { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Chon vai tro.")]
+    [Required(ErrorMessage = "Chọn vai trò.")]
     public string Role { get; set; } = "Staff";
 }

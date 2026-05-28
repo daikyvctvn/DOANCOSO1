@@ -24,11 +24,15 @@ public sealed class SqlCmdMenuRepository : IMenuRepository
 
         if (string.IsNullOrWhiteSpace(sqlCmdPath) || !File.Exists(sqlCmdPath))
         {
-            model.ErrorMessage = "Khong tim thay sqlcmd de doc menu SQL.";
+            model.ErrorMessage = "Không tìm thấy sqlcmd để đọc menu SQL.";
             return model;
         }
 
         const string query = @"SET NOCOUNT ON;
+IF COL_LENGTH('dbo.MenuItem', 'SpiceLevel') IS NULL
+BEGIN
+    ALTER TABLE dbo.MenuItem ADD SpiceLevel int NOT NULL CONSTRAINT DF_MenuItem_SpiceLevel DEFAULT(0);
+END;
 SELECT
     c.CategoryId,
     c.CategoryCode,
@@ -42,10 +46,12 @@ SELECT
     i.Price,
     i.PreparationTimeMinutes,
     CASE WHEN i.IsBestSeller = 1 THEN 1 ELSE 0 END AS IsBestSeller,
-    i.PopularityScore
+    CASE WHEN i.IsAvailable = 1 THEN 1 ELSE 0 END AS IsAvailable,
+    i.PopularityScore,
+    ISNULL(i.SpiceLevel, 0) AS SpiceLevel
 FROM dbo.MenuCategory AS c
 INNER JOIN dbo.MenuItem AS i ON i.CategoryId = c.CategoryId
-WHERE c.IsActive = 1 AND i.IsAvailable = 1
+WHERE c.IsActive = 1
 ORDER BY c.DisplayOrder, i.PopularityScore DESC, i.ItemName;";
 
         var tempQueryFile = Path.Combine(Path.GetTempPath(), $"menu-query-{Guid.NewGuid():N}.sql");
@@ -58,7 +64,7 @@ ORDER BY c.DisplayOrder, i.PopularityScore DESC, i.ItemName;";
             var psi = new ProcessStartInfo
             {
                 FileName = sqlCmdPath,
-                Arguments = $"-S {server} -d {database} -E -u -h -1 -s \"|\" -w 65535 -y 8000 -Y 8000 -i \"{tempQueryFile}\" -o \"{tempOutputFile}\"",
+                Arguments = $"-S {server} -d {database} -E -No -u -h -1 -s \"|\" -w 65535 -y 8000 -Y 8000 -i \"{tempQueryFile}\" -o \"{tempOutputFile}\"",
                 RedirectStandardError = true,
                 StandardErrorEncoding = Encoding.Unicode,
                 UseShellExecute = false,
@@ -78,14 +84,14 @@ ORDER BY c.DisplayOrder, i.PopularityScore DESC, i.ItemName;";
             if (process.ExitCode != 0)
             {
                 _logger.LogError("sqlcmd tra ve ma loi {ExitCode}: {Error}", process.ExitCode, error);
-                model.ErrorMessage = "Khong doc duoc menu tu SQL Server.";
+                model.ErrorMessage = "Không đọc được menu từ SQL Server.";
                 return model;
             }
 
             var rows = ParseRows(output);
             if (rows.Count == 0)
             {
-                model.ErrorMessage = "Khong co mon nao duoc doc tu SQL.";
+                model.ErrorMessage = "Không có món nào được đọc từ SQL.";
                 return model;
             }
 
@@ -106,8 +112,8 @@ ORDER BY c.DisplayOrder, i.PopularityScore DESC, i.ItemName;";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Khong the doc menu tu SQL Server qua sqlcmd.");
-            model.ErrorMessage = $"Khong ket noi duoc menu SQL. Chi tiet: {ex.Message}";
+            _logger.LogError(ex, "Không thể đọc menu từ SQL Server qua sqlcmd.");
+            model.ErrorMessage = $"Không kết nối được menu SQL. Chi tiết: {ex.Message}";
             return model;
         }
         finally
@@ -131,7 +137,7 @@ ORDER BY c.DisplayOrder, i.PopularityScore DESC, i.ItemName;";
             }
 
             var parts = line.Split('|').Select(static x => x.Trim()).ToArray();
-            if (parts.Length < 13)
+            if (parts.Length < 15)
             {
                 continue;
             }
@@ -150,7 +156,9 @@ ORDER BY c.DisplayOrder, i.PopularityScore DESC, i.ItemName;";
                 Price = decimal.Parse(parts[9]),
                 PreparationTimeMinutes = int.Parse(parts[10]),
                 IsBestSeller = parts[11] == "1",
-                PopularityScore = int.Parse(parts[12])
+                IsAvailable = parts[12] == "1",
+                PopularityScore = int.Parse(parts[13]),
+                SpiceLevel = int.Parse(parts[14])
             });
         }
 
@@ -168,14 +176,16 @@ ORDER BY c.DisplayOrder, i.PopularityScore DESC, i.ItemName;";
             ItemCode = x.ItemCode,
             Name = x.Name,
             Description = x.Description,
-            ImageUrl = x.ImageUrl?.Trim() ?? string.Empty,
+            ImageUrl = ResolveImageUrl(x.ImageUrl, x.ItemCode),
             IngredientSummary = ResolveIngredientSummary(x.ItemCode, x.CategoryCode),
             ServingSuggestion = ResolveServingSuggestion(x.ItemCode, x.CategoryCode),
             CustomizationSummary = ResolveCustomizationSummary(x.ItemCode, x.CategoryCode),
             Price = x.Price,
             PreparationTimeMinutes = x.PreparationTimeMinutes,
             IsBestSeller = x.IsBestSeller,
+            IsAvailable = x.IsAvailable,
             PopularityScore = x.PopularityScore,
+            SpiceLevel = x.SpiceLevel,
             Accent = MapAccent(x.CategoryCode)
         };
     }
@@ -193,6 +203,24 @@ ORDER BY c.DisplayOrder, i.PopularityScore DESC, i.ItemName;";
             _ when categoryCode == "DOUONG" => "Nguyên liệu pha chế theo công thức chuẩn quầy bar, phục vụ lạnh ngay sau khi làm.",
             _ when categoryCode == "TRANGMIENG" => "Mẻ tráng miệng làm mới trong ngày, ưu tiên vị nhẹ và kết cấu mềm mịn.",
             _ => "Nguyên liệu được chuẩn bị trong ngày, cân bằng giữa hương vị chính và phần ăn chia nhóm."
+        };
+    }
+
+    private static string ResolveImageUrl(string? imageUrl, string itemCode)
+    {
+        var trimmed = imageUrl?.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(trimmed))
+        {
+            return trimmed;
+        }
+
+        return itemCode.ToUpperInvariant() switch
+        {
+            "DU001" => "/images/menu/tra-dao-cam-sa.svg",
+            "MC001" => "/images/menu/lau-thai-tom-nam.svg",
+            "MC002" => "/images/menu/bo-nuong-sot-tieu-den.svg",
+            "TM001" => "/images/menu/banh-flan-caramel.svg",
+            _ => string.Empty
         };
     }
 
@@ -226,8 +254,8 @@ ORDER BY c.DisplayOrder, i.PopularityScore DESC, i.ItemName;";
     {
         return categoryCode switch
         {
-            "MONCHINH" => "red",
-            "DOUONG" => "gold",
+            "MONCHINH" => "ređ",
+            "DOUONG" => "golđ",
             "TRANGMIENG" => "green",
             "KHAIVI" => "warm",
             _ => "warm"
@@ -262,9 +290,8 @@ ORDER BY c.DisplayOrder, i.PopularityScore DESC, i.ItemName;";
         public decimal Price { get; set; }
         public int PreparationTimeMinutes { get; set; }
         public bool IsBestSeller { get; set; }
+        public bool IsAvailable { get; set; }
         public int PopularityScore { get; set; }
+        public int SpiceLevel { get; set; }
     }
 }
-
-
-

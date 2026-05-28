@@ -37,7 +37,7 @@ public class AccountController : Controller
         var user = await _userAccountService.ValidateLoginAsync(model.UserName, model.Password, cancellationToken);
         if (user is null)
         {
-            ModelState.AddModelError(string.Empty, "Ten dang nhap hoac mat khau khong dung.");
+            ModelState.AddModelError(string.Empty, "Tên đăng nhập hoặc mật khẩu không đúng.");
             return View(model);
         }
 
@@ -90,11 +90,11 @@ public class AccountController : Controller
         var result = await _userAccountService.RegisterAsync(model, cancellationToken);
         if (!result.Succeeded)
         {
-            ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Dang ky that bai.");
+            ModelState.AddModelError(string.Empty, result.ErrorMessage ?? "Đăng ký thất bại.");
             return View(model);
         }
 
-        TempData["AuthMessage"] = "Dang ky thanh cong. Hay dang nhap de tiep tuc.";
+        TempData["AuthMessage"] = "Đăng ký thanh cong. Hay dang nhap de tiep tuc.";
         return RedirectToAction(nameof(Login));
     }
 

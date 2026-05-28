@@ -13,6 +13,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<IMenuRepository, SqlCmdMenuRepository>();
 builder.Services.AddScoped<IMenuAdminService, SqlCmdMenuAdminService>();
 builder.Services.AddSingleton<IUserAccountService, FileUserAccountService>();
+builder.Services.AddSingleton<ITableOrderService, FileTableOrderService>();
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "data-protection-keys")))
     .SetApplicationName("TableOrderWeb");
@@ -41,12 +42,19 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapStaticAssets();
+app.MapControllerRoute(
+    name: "table-menu",
+    pattern: "ban/{tableCode}",
+    defaults: new { controller = "Home", action = "Customer" });
+
+app.MapControllerRoute(
+    name: "table-short",
+    pattern: "t/{tableCode}",
+    defaults: new { controller = "Home", action = "Customer" });
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}")
-    .WithStaticAssets();
+    pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();
 

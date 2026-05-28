@@ -1,15 +1,15 @@
 @{
-    ViewData["Title"] = "Khong du quyen";
+    ViewData["Title"] = "Không đủ quyền";
 }
 
 <section class="auth-wrap">
     <article class="auth-card">
         <span class="eyebrow">Access denied</span>
-        <h1>Ban khong du quyen vao trang nay</h1>
-        <p>Trang nay chi danh cho dung vai tro. Hay dang nhap lai bang tai khoan Nhan vien hoac Quan tri phu hop.</p>
+        <h1>Bạn không đủ quyền vào trang này</h1>
+        <p>Trang này chỉ dành cho đúng vai trò. Hãy đăng nhập lại bằng tài khoản Nhân viên hoặc Quản trị phù hợp.</p>
         <div class="auth-actions">
-            <a class="btn btn-accent" asp-controller="Account" asp-action="Login">Dang nhap lai</a>
-            <a class="btn btn-ghost" asp-controller="Home" asp-action="Index">Ve tong quan</a>
+            <a class="btn btn-accent" asp-controller="Account" asp-action="Login">Đăng nhập lại</a>
+            <a class="btn btn-ghost" asp-controller="Home" asp-action="Index">Về tổng quan</a>
         </div>
     </article>
 </section>

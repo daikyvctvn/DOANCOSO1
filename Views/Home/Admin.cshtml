@@ -1,250 +1,507 @@
-﻿@model TableOrderWeb.Models.AdminMenuPageViewModel
+@model TableOrderWeb.Models.AdminMenuPageViewModel
 @{
-    ViewData["Title"] = "Quan tri";
+    ViewData["Title"] = "Quản trị";
 
     var topMetrics = new[]
     {
-        new { Label = "Tong so mon", Value = Model.MenuItems.Count.ToString(), Note = "Tat ca mon hien co trong SQL" },
-        new { Label = "Mon dang ban", Value = Model.MenuItems.Count(x => x.IsAvailable).ToString(), Note = "Khach dang co the dat tu menu web" },
-        new { Label = "Best seller", Value = Model.MenuItems.Count(x => x.IsBestSeller).ToString(), Note = "Mon dang duoc danh dau noi bat" }
+        new { Label = "Tổng số món", Value = Model.MenuItems.Count.ToString(), Note = "Tất cả món hiện có trong SQL" },
+        new { Label = "Món đang bán", Value = Model.MenuItems.Count(x => x.IsAvailable).ToString(), Note = "Món đang hiện trên menu web" },
+        new { Label = "Hóa đơn hôm nay", Value = Model.Operations.TodayOrderCount.ToString(), Note = "Đơn đã ghi nhận trong ngày" },
+        new { Label = "Chờ thanh toán", Value = Model.Operations.PendingPaymentCount.ToString(), Note = "Yêu cầu thanh toán chưa xử lý" }
     };
 
-    var imageSuggestions = new[]
+    var galleryVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+}
+
+<div data-auto-refresh-url="@Url.Action("Admin", new { editItemId = Model.Form.ItemId })" data-auto-refresh-seconds="30">
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
     {
-        new { Label = "Quyen Admin", Copy = "Chi tai khoan role Admin moi duoc them, sua va xoa mon." },
-        new { Label = "Quyen Staff", Copy = "Staff chi vao duoc man hinh nhan vien, khong duoc goi API CRUD menu." },
-        new { Label = "Khach hang", Copy = "Khach tai ban chi xem menu va dat mon, khong co quyen can thiep du lieu." }
-    };
-
-    var tables = new[] { "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "B01", "B02", "B03", "B04", "B05", "B06", "C01", "C02", "C03", "C04" };
-}
-
-<section class="page-intro">
-    <div>
-        <span class="eyebrow">Admin / Chu quan</span>
-        <h1>Admin co quyen them, sua, xoa mon va quan ly menu SQL theo role.</h1>
-        <p>Toan bo thao tac CRUD o day deu bi khoa bang role <strong>Admin</strong> o phia server.</p>
-    </div>
-    <div class="intro-badges">
-        <span class="status-badge">Ca hom nay: 9:00 - 22:00</span>
-        <span class="status-badge muted">Cap nhat 21/03/2026</span>
-    </div>
-</section>
-
-@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
-{
-    <div class="auth-alert success admin-alert">@Model.StatusMessage</div>
-}
-
-@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
-{
-    <div class="auth-alert admin-alert">@Model.ErrorMessage</div>
-}
-
-<section class="metric-row">
-    @foreach (var metric in topMetrics)
-    {
-        <article class="metric-card">
-            <span>@metric.Label</span>
-            <strong>@metric.Value</strong>
-            <p>@metric.Note</p>
-        </article>
+        <div class="auth-alert success admin-alert">@Model.StatusMessage</div>
     }
-</section>
 
-<section class="admin-grid">
-    <div class="admin-main">
-        <article class="panel-card admin-editor-card">
-            <div class="panel-heading">
-                <div>
-                    <span class="eyebrow">Phan quyen menu</span>
-                    <h2>@(Model.IsEditing ? "Sua mon an" : "Them mon moi")</h2>
-                </div>
-                <div class="inline-actions">
-                    @if (Model.IsEditing)
-                    {
-                        <a class="btn btn-ghost btn-small" asp-action="Admin">Tao form moi</a>
-                    }
-                    <span class="status-badge">Role bat buoc: Admin</span>
-                </div>
-            </div>
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="auth-alert admin-alert">@Model.ErrorMessage</div>
+    }
 
-            <form class="auth-form admin-editor-form" asp-action="SaveMenuItem" method="post">
-                @Html.AntiForgeryToken()
-                <input asp-for="Form.ItemId" type="hidden" />
+    <section class="metric-row">
+        @foreach (var metric in topMetrics)
+        {
+            <article class="metric-card">
+                <span>@metric.Label</span>
+                <strong>@metric.Value</strong>
+                <p>@metric.Note</p>
+            </article>
+        }
+    </section>
 
-                <div class="admin-editor-grid">
-                    <label class="auth-field">
-                        <span>Danh muc</span>
-                        <select asp-for="Form.CategoryId">
-                            <option value="0">Chon danh muc</option>
-                            @foreach (var category in Model.Categories.OrderBy(x => x.DisplayOrder))
-                            {
-                                <option value="@category.CategoryId">@category.CategoryName</option>
-                            }
-                        </select>
-                    </label>
-
-                    <label class="auth-field">
-                        <span>Ma mon</span>
-                        <input asp-for="Form.ItemCode" placeholder="VD: MC007" />
-                    </label>
-
-                    <label class="auth-field">
-                        <span>Ten mon</span>
-                        <input asp-for="Form.Name" placeholder="Nhap ten mon" />
-                    </label>
-
-                    <label class="auth-field">
-                        <span>Gia</span>
-                        <input asp-for="Form.Price" type="number" min="1000" step="1000" />
-                    </label>
-
-                    <label class="auth-field">
-                        <span>Thoi gian che bien (phut)</span>
-                        <input asp-for="Form.PreparationTimeMinutes" type="number" min="1" max="240" />
-                    </label>
-
-                    <label class="auth-field">
-                        <span>Diem pho bien</span>
-                        <input asp-for="Form.PopularityScore" type="number" min="0" max="100000" />
-                    </label>
+    <section class="admin-grid">
+        <div class="admin-main">
+            <article class="panel-card admin-editor-card">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Thêm danh mục</h2>
+                    </div>
                 </div>
 
-                <label class="auth-field">
-                    <span>Link anh</span>
-                    <input asp-for="Form.ImageUrl" placeholder="De trong neu chua gan anh" />
-                </label>
+                <form class="auth-form admin-editor-form" asp-action="SaveCategory" method="post">
+                    @Html.AntiForgeryToken()
+                    <div class="admin-editor-grid">
+                        <label class="auth-field">
+                            <span>Mã danh mục</span>
+                            <input asp-for="CategoryForm.CategoryCode" placeholder="VD: MONNUONG" />
+                        </label>
 
-                <label class="auth-field">
-                    <span>Mo ta mon</span>
-                    <textarea asp-for="Form.Description" rows="4" placeholder="Mo ta ngan ve thanh phan, huong vi..."></textarea>
-                </label>
+                        <label class="auth-field">
+                            <span>Tên danh mục</span>
+                            <input asp-for="CategoryForm.CategoryName" placeholder="VD: Món nướng" />
+                        </label>
 
-                <div class="admin-check-row">
-                    <label class="mini-check"><input asp-for="Form.IsBestSeller" /> Best seller</label>
-                    <label class="mini-check"><input asp-for="Form.IsAvailable" /> Dang ban</label>
-                </div>
+                        <label class="auth-field">
+                            <span>Thứ tự hiển thị</span>
+                            <input asp-for="CategoryForm.DisplayOrder" type="number" min="1" max="999" />
+                        </label>
+                    </div>
 
-                <div class="auth-actions">
-                    <button class="btn btn-accent" type="submit">@(Model.IsEditing ? "Luu cap nhat" : "Them mon moi")</button>
-                    @if (Model.IsEditing)
-                    {
-                        <a class="btn btn-ghost" asp-action="Admin">Bo chon mon dang sua</a>
-                    }
-                </div>
-            </form>
-        </article>
+                    <div class="auth-actions">
+                        <button class="btn btn-accent" type="submit">Thêm danh mục</button>
+                    </div>
+                </form>
+            </article>
 
-        <article class="panel-card">
-            <div class="panel-heading">
-                <div>
-                    <span class="eyebrow">Quan ly menu</span>
-                    <h2>Danh sach mon dang co trong SQL</h2>
-                </div>
-                <span class="status-badge muted">Chi role Admin moi co quyen CRUD</span>
-            </div>
-            <div class="menu-table menu-table--media">
-                <div class="menu-table__head menu-table__head--media admin-menu-head">
-                    <span>Anh mon</span>
-                    <span>Ten mon</span>
-                    <span>Danh muc</span>
-                    <span>Gia</span>
-                    <span>Trang thai</span>
-                    <span>Hanh dong</span>
-                </div>
-                @foreach (var row in Model.MenuItems)
-                {
-                    <div class="menu-table__row menu-table__row--media admin-menu-row">
-                        @if (!string.IsNullOrWhiteSpace(row.ImageUrl))
+            <article class="panel-card admin-editor-card">
+                <div class="panel-heading">
+                    <div>
+                        <h2>@(Model.IsEditing ? "Sửa món ăn" : "Thêm món mới")</h2>
+                    </div>
+                    <div class="inline-actions">
+                        @if (Model.IsEditing)
                         {
-                            <div class="menu-thumb"><img src="@row.ImageUrl" alt="@row.Name" /></div>
+                            <a class="btn btn-ghost btn-small" asp-action="Admin">Tạo form mới</a>
+                        }
+                        <span class="status-badge">Role bắt buộc: Admin</span>
+                    </div>
+                </div>
+
+                <form class="auth-form admin-editor-form" asp-action="SaveMenuItem" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+                    <input asp-for="Form.ItemId" type="hidden" />
+
+                    <div class="admin-editor-grid">
+                        <label class="auth-field">
+                            <span>Danh mục</span>
+                            <select asp-for="Form.CategoryId">
+                                <option value="0">Chọn danh mục</option>
+                                @foreach (var category in Model.Categories.OrderBy(x => x.DisplayOrder))
+                                {
+                                    <option value="@category.CategoryId">@category.CategoryName</option>
+                                }
+                            </select>
+                        </label>
+
+                        <label class="auth-field">
+                            <span>Mã món</span>
+                            <input asp-for="Form.ItemCode" placeholder="VD: MC007" />
+                        </label>
+
+                        <label class="auth-field">
+                            <span>Tên món</span>
+                            <input asp-for="Form.Name" placeholder="Nhập tên món" />
+                        </label>
+
+                        <label class="auth-field">
+                            <span>Giá</span>
+                            <input asp-for="Form.Price" type="number" min="1000" step="1000" />
+                        </label>
+
+                        <label class="auth-field">
+                            <span>Thời gian chế biến (phút)</span>
+                            <input asp-for="Form.PreparationTimeMinutes" type="number" min="1" max="240" />
+                        </label>
+
+                        <label class="auth-field">
+                            <span>Điểm phổ biến</span>
+                            <input asp-for="Form.PopularityScore" type="number" min="0" max="100000" />
+                        </label>
+
+                        <label class="auth-field">
+                            <span>Mức cay (0-5 quả ớt)</span>
+                            <input asp-for="Form.SpiceLevel" type="number" min="0" max="5" />
+                        </label>
+                    </div>
+
+                    <label class="auth-field">
+                        <span>Link ảnh</span>
+                        <input asp-for="Form.ImageUrl" placeholder="Để trống nếu chưa gắn ảnh" />
+                    </label>
+
+                    <label class="auth-field">
+                        <span>File ảnh</span>
+                        <input name="ImageFile" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" data-menu-image-input />
+                    </label>
+
+                    <div class="menu-image-preview" data-menu-image-preview>
+                        @if (!string.IsNullOrWhiteSpace(Model.Form.ImageUrl))
+                        {
+                            <img src="@Model.Form.ImageUrl" alt="Ảnh hiện tại của món @Model.Form.Name" onerror="this.onerror=null;this.src='/images/menu/default-dish.svg';" />
                         }
                         else
                         {
-                            <div class="menu-thumb menu-thumb--empty"><span>Chua co anh</span></div>
+                            <span>Chưa có ảnh món</span>
                         }
-                        <div>
-                            <strong>@row.Name</strong>
-                            <span class="table-subline">@row.ItemCode | @row.PreparationTimeMinutes phut | Score @row.PopularityScore</span>
-                        </div>
-                        <span>@row.CategoryName</span>
-                        <span>@row.Price.ToString("N0")d</span>
-                        <span>@(row.IsAvailable ? "Dang ban" : "Tam an") @(row.IsBestSeller ? "| Best seller" : string.Empty)</span>
-                        <div class="table-actions">
-                            <a class="btn btn-ghost btn-small" asp-action="Admin" asp-route-editItemId="@row.ItemId">Sua</a>
-                            <form asp-action="DeleteMenuItem" method="post">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="itemId" value="@row.ItemId" />
-                                <button class="btn btn-accent btn-small" type="submit" onclick="return confirm('Xoa mon @row.Name ?')">Xoa</button>
-                            </form>
-                        </div>
+                    </div>
+
+                    <label class="auth-field">
+                        <span>Mô tả món</span>
+                        <textarea asp-for="Form.Description" rows="4" placeholder="Mô tả ngắn về thành phần, hương vị..."></textarea>
+                    </label>
+
+                    <div class="admin-check-row">
+                        <label class="mini-check"><input asp-for="Form.IsBestSeller" /> Best seller</label>
+                        <label class="mini-check"><input asp-for="Form.IsAvailable" /> Đang bán</label>
+                        <label class="mini-check"><input asp-for="Form.IsSoldOut" /> Hết hàng</label>
+                    </div>
+
+                    <div class="auth-actions">
+                        <button class="btn btn-accent" type="submit">@(Model.IsEditing ? "Lưu cập nhật" : "Thêm món mới")</button>
+                        @if (Model.IsEditing)
+                        {
+                            <button class="btn btn-ghost" type="submit" asp-action="CreateMenuItem">Thêm thành món mới</button>
+                            <a class="btn btn-ghost" asp-action="Admin">Bỏ chọn món đang sửa</a>
+                        }
+                    </div>
+                </form>
+            </article>
+
+            <article class="panel-card admin-chat-history">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Lịch sử trò chuyện</h2>
+                    </div>
+                    <span class="status-badge">@Model.Operations.ChatThreads.Sum(x => x.Messages.Count) tin</span>
+                </div>
+
+                @if (Model.Operations.ChatThreads.Count == 0)
+                {
+                    <div class="timeline-item">
+                        <strong>Chưa có hội thoại nào giữa khách và nhân viên.</strong>
                     </div>
                 }
-            </div>
-        </article>
-
-        <article class="panel-card media-manager">
-            <div class="panel-heading">
-                <div>
-                    <span class="eyebrow">Rule phan quyen</span>
-                    <h2>Admin duoc CRUD, Staff va khach khong duoc thao tac menu</h2>
-                </div>
-            </div>
-            <div class="suggestion-stack media-guidelines">
-                @foreach (var item in imageSuggestions)
+                else
                 {
+                    <div class="admin-chat-history__list">
+                        @foreach (var thread in Model.Operations.ChatThreads)
+                        {
+                            <details class="staff-chat-card staff-chat-card--collapsible admin-chat-thread">
+                                <summary class="staff-chat-summary">
+                                    <strong>Bàn @thread.TableCode</strong>
+                                    @if (thread.PendingCount > 0)
+                                    {
+                                        <span class="status-badge staff-unread-badge">Có tin nhắn chưa đọc</span>
+                                    }
+                                    <small>@thread.LastMessageLabel</small>
+                                </summary>
+                                <div class="staff-chat-card__body">
+                                    <div class="chat-thread compact-stack">
+                                        @foreach (var message in thread.Messages)
+                                        {
+                                            var side = string.Equals(message.SenderRole, "Staff", StringComparison.OrdinalIgnoreCase) ? "mine" : "theirs";
+                                            <div class="chat-bubble chat-bubble--@message.Direction chat-message chat-message--@side">
+                                                @if (side == "theirs")
+                                                {
+                                                    <strong class="chat-message__name">@message.SenderName</strong>
+                                                }
+                                                <p>@message.Message</p>
+                                                <small class="chat-message__time">@message.TimeLabel</small>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </details>
+                        }
+                    </div>
+                }
+            </article>
+
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Lịch sử thanh toán</h2>
+                    </div>
+                    <span class="status-badge">@Model.Operations.PaymentHistory.Count lần</span>
+                </div>
+                <div class="menu-table admin-payment-history">
+                    <div class="menu-table__head admin-payment-head">
+                        <span>Thời gian</span>
+                        <span>Bàn / đơn</span>
+                        <span>Phương thức</span>
+                        <span>Số tiền</span>
+                        <span>Trạng thái</span>
+                        <span>Ghi chú</span>
+                    </div>
+                    @foreach (var payment in Model.Operations.PaymentHistory)
+                    {
+                        <div class="menu-table__row admin-payment-row">
+                            <div>
+                                <strong>@payment.UpdatedAtLabel</strong>
+                                <span class="table-subline">Yêu cầu: @payment.RequestedAtLabel</span>
+                            </div>
+                            <div>
+                                <strong>@payment.TableCode</strong>
+                                <span class="table-subline">#@payment.OrderCode</span>
+                            </div>
+                            <span>@payment.MethodLabel</span>
+                            <strong>@payment.Amount.ToString("N0")đ</strong>
+                            <span>@payment.StatusLabel</span>
+                            <span>@payment.Note</span>
+                        </div>
+                    }
+                    @if (Model.Operations.PaymentHistory.Count == 0)
+                    {
+                        <div class="menu-table__row">
+                            <span>Chưa có lịch sử thanh toán nào.</span>
+                        </div>
+                    }
+                </div>
+            </article>
+
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Doanh thu theo ca / ngày / tháng</h2>
+                    </div>
+                </div>
+                <div class="report-grid">
+                    <div class="suggestion-item admin-shift-total">
+                        <strong>@Model.Operations.ShiftLabel</strong>
+                        <span>@Model.Operations.ShiftTimeRangeLabel</span>
+                        <b>@Model.Operations.ShiftRevenue.ToString("N0")đ</b>
+                        <small>@Model.Operations.ShiftOrderCount đơn trong ca</small>
+                        <form asp-action="CloseShift" method="post" onsubmit="return confirm('Kết ca hiện tại với tổng doanh thu @Model.Operations.ShiftRevenue.ToString("N0")đ?')">
+                            @Html.AntiForgeryToken()
+                            <button class="btn btn-accent btn-small" type="submit">Kết ca hiện tại</button>
+                        </form>
+                    </div>
                     <div class="suggestion-item">
-                        <strong>@item.Label</strong>
-                        <span>@item.Copy</span>
+                        <strong>Hôm nay</strong>
+                        <span>@Model.Operations.TodayRevenue.ToString("N0")đ</span>
+                        <small>@Model.Operations.TodayOrderCount đơn trong ngày</small>
+                        <form asp-action="CloseDay" method="post" onsubmit="return confirm('Kết ngày hôm nay và reset toàn bộ thông báo đơn cũ?')">
+                            @Html.AntiForgeryToken()
+                            <button class="btn btn-ghost btn-small" type="submit">Kết ngày & reset</button>
+                        </form>
                     </div>
-                }
-            </div>
-        </article>
-    </div>
-
-    <aside class="admin-side">
-        <article class="panel-card">
-            <div class="panel-heading">
-                <div>
-                    <span class="eyebrow">QR Code theo ban</span>
-                    <h3>Xuat ma dinh danh</h3>
-                </div>
-            </div>
-            <div class="qr-grid">
-                @foreach (var table in tables)
-                {
-                    <div class="qr-card">
-                        <strong>@table</strong>
-                        <div class="qr-placeholder"></div>
-                        <button class="text-link" type="button">Xuat QR</button>
+                    <div class="suggestion-item">
+                        <strong>Tháng này</strong>
+                        <span>@Model.Operations.MonthRevenue.ToString("N0")đ</span>
                     </div>
-                }
-            </div>
-        </article>
+                    <div class="suggestion-item">
+                        <strong>Đơn hủy / hoàn</strong>
+                        <span>@Model.Operations.CancelledOrderCount đơn</span>
+                    </div>
+                </div>
+            </article>
 
-        <article class="panel-card">
-            <div class="panel-heading">
-                <div>
-                    <span class="eyebrow">Ghi nho bao mat</span>
-                    <h3>Server moi la noi quyet dinh quyen</h3>
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Hóa đơn, hủy và hoàn trả</h2>
+                    </div>
                 </div>
-            </div>
-            <div class="service-list">
-                <div class="service-item">
-                    <strong>GET /Home/Admin</strong>
-                    <p>Chi role Admin vao duoc trang quan tri menu.</p>
+                <div class="menu-table">
+                    <div class="menu-table__head admin-order-head">
+                        <span>Đơn</span>
+                        <span>Bàn</span>
+                        <span>Món</span>
+                        <span>Tổng tiền</span>
+                        <span>Thanh toán</span>
+                    </div>
+                    @foreach (var order in Model.Operations.Orders)
+                    {
+                        <div class="menu-table__row admin-order-row">
+                            <div>
+                                <strong>#@order.OrderCode</strong>
+                                <span class="table-subline">@order.SubmittedTimeLabel | @order.StatusLabel</span>
+                            </div>
+                            <span>@order.TableCode</span>
+                            <span>@order.ItemsSummary</span>
+                            <span>@order.TotalAmount.ToString("N0")đ</span>
+                            <span>@order.PaymentLabel</span>
+                        </div>
+                    }
                 </div>
-                <div class="service-item">
-                    <strong>POST /Home/SaveMenuItem</strong>
-                    <p>Chi Admin moi luu duoc them / sua mon, co AntiForgeryToken.</p>
-                </div>
-                <div class="service-item">
-                    <strong>POST /Home/DeleteMenuItem</strong>
-                    <p>Chi Admin moi xoa duoc mon, xoa kem option lien quan trong SQL.</p>
-                </div>
-            </div>
-        </article>
-    </aside>
-</section>
+            </article>
 
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Danh sách món</h2>
+                    </div>
+                </div>
+                <div class="menu-table menu-table--media">
+                    @foreach (var group in Model.MenuItems.GroupBy(x => x.CategoryName).OrderBy(g => Model.Categories.FirstOrDefault(c => c.CategoryName == g.Key)?.DisplayOrder ?? 999))
+                    {
+                        <div class="menu-category-divider">
+                            <strong>@group.Key</strong>
+                            <span>@group.Count() món</span>
+                        </div>
+                        <div class="menu-table__head menu-table__head--media admin-menu-head">
+                            <span>Ảnh món</span>
+                            <span>Tên món</span>
+                            <span>Mã món</span>
+                            <span>Giá</span>
+                            <span>Trạng thái</span>
+                            <span>Hành động</span>
+                        </div>
+                        @foreach (var row in group.OrderByDescending(x => x.ItemId))
+                        {
+                            <div class="menu-table__row menu-table__row--media admin-menu-row">
+                                @if (!string.IsNullOrWhiteSpace(row.ImageUrl))
+                                {
+                                    var rowImageUrl = row.ImageUrl.StartsWith("/", StringComparison.Ordinal)
+                                        ? $"{row.ImageUrl}?v={galleryVersion}"
+                                        : row.ImageUrl;
+                                    <div class="menu-thumb"><img src="@rowImageUrl" alt="@row.Name" onerror="this.onerror=null;this.src='/images/menu/default-dish.svg';" /></div>
+                                }
+                                else
+                                {
+                                    <div class="menu-thumb menu-thumb--empty"><span>Chưa có ảnh</span></div>
+                                }
+                                <div>
+                                    <strong>@row.Name</strong>
+                                    @if (row.SpiceLevel > 0)
+                                    {
+                                        <span class="spice-level spice-level--admin" aria-label="Mức cay @row.SpiceLevel/5">@string.Concat(Enumerable.Repeat("🌶", row.SpiceLevel))</span>
+                                    }
+                                    <span class="table-subline">@row.PreparationTimeMinutes phút | Score @row.PopularityScore</span>
+                                </div>
+                                <span>@row.ItemCode</span>
+                                <span>@row.Price.ToString("N0")đ</span>
+                                <span>@(row.IsAvailable ? "Đang bán" : "Hết hàng") @(row.IsBestSeller ? "| Best seller" : string.Empty)</span>
+                                <div class="table-actions">
+                                    <a class="btn btn-ghost btn-small" asp-action="Admin" asp-route-editItemId="@row.ItemId">Sửa</a>
+                                    <form asp-action="DeleteMenuItem" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="itemId" value="@row.ItemId" />
+                                        <button class="btn btn-accent btn-small" type="submit" onclick="return confirm('Xóa món @row.Name ?')">Xóa</button>
+                                    </form>
+                                </div>
+                            </div>
+                        }
+                    }
+                    @if (Model.MenuItems.Count == 0)
+                    {
+                        <div class="menu-table__row">
+                            <span>Chưa có món nào.</span>
+                        </div>
+                    }
+                </div>
+            </article>
+
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Quản trị thay 6 ảnh slideshow</h2>
+                    </div>
+                    <span class="status-badge">Chỉ Admin được chỉnh</span>
+                </div>
+                <div class="gallery-admin-grid">
+                    @for (var slot = 1; slot <= 6; slot++)
+                    {
+                        <form class="gallery-admin-card" asp-action="SaveGalleryImage" method="post" enctype="multipart/form-data">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="Slot" value="@slot" />
+                            <img src="/images/gallery/anh-@(slot).jpg?v=@galleryVersion"
+                                 alt="Ảnh slideshow @slot"
+                                 onerror="this.onerror=null;this.src='/images/gallery/placeholder.svg';" />
+                            <label class="auth-field">
+                                <span>Ảnh @slot</span>
+                                <input type="file" name="Image" accept=".jpg,.jpeg,image/jpeg" />
+                            </label>
+                            <button class="btn btn-accent btn-small" type="submit">Lưu ảnh @slot</button>
+                        </form>
+                    }
+                </div>
+            </article>
+
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Đánh giá mới</h2>
+                    </div>
+                </div>
+                <div class="review-list admin-review-list">
+                    @if (Model.Operations.RecentReviews.Count == 0)
+                    {
+                        <div class="menu-table__row">
+                            <span>Chưa có đánh giá mới.</span>
+                        </div>
+                    }
+                    @foreach (var review in Model.Operations.RecentReviews)
+                    {
+                        <article class="review-card">
+                            <strong>Bàn @review.TableCode</strong>
+                            <span>@review.CreatedAtLabel | Món @review.FoodRating/5 | Dịch vụ @review.ServiceRating/5</span>
+                            <p>@review.Comment</p>
+                        </article>
+                    }
+                </div>
+            </article>
+
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Món bán chạy</h2>
+                    </div>
+                </div>
+                <div class="report-grid">
+                    @foreach (var item in Model.Operations.BestSellers)
+                    {
+                        <div class="suggestion-item">
+                            <strong>@item.Name</strong>
+                            <span>@item.Quantity món</span>
+                        </div>
+                    }
+                </div>
+            </article>
+
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Bàn phục vụ nhiều</h2>
+                    </div>
+                </div>
+                <div class="report-grid">
+                    @foreach (var table in Model.Operations.TableServiceUsage)
+                    {
+                        <div class="suggestion-item">
+                            <strong>Bàn @table.TableCode</strong>
+                            <span>@table.ServiceRequestCount yêu cầu / tin nhắn</span>
+                        </div>
+                    }
+                </div>
+            </article>
+        </div>
+
+        <aside class="admin-side">
+            <article class="panel-card qr-panel">
+                <div class="panel-heading">
+                    <div>
+                        <h2>QR theo bàn</h2>
+                    </div>
+                </div>
+                <div class="qr-grid">
+                    @foreach (var qr in Model.TableQrs)
+                    {
+                        <div class="qr-item">
+                            <strong>@qr.TableCode</strong>
+                            <img class="qr-item__image" src="@qr.QrImageUrl" alt="QR bàn @qr.TableCode" />
+                            <a href="@qr.ShortUrl" target="_blank">Mở menu của bàn</a>
+                            <small>@qr.ShortUrl</small>
+                        </div>
+                    }
+                </div>
+            </article>
+        </aside>
+    </section>
+</div>

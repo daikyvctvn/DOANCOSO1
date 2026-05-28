@@ -4,10 +4,10 @@ namespace TableOrderWeb.Models;
 
 public sealed class LoginViewModel
 {
-    [Required(ErrorMessage = "Nhap ten dang nhap.")]
+    [Required(ErrorMessage = "Nhập tên đăng nhập.")]
     public string UserName { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "Nhap mat khau.")]
+    [Required(ErrorMessage = "Nhập mật khẩu.")]
     [DataType(DataType.Password)]
     public string Password { get; set; } = string.Empty;
 

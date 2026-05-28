@@ -1,313 +1,438 @@
-﻿@model TableOrderWeb.Models.CustomerPageViewModel
+@model TableOrderWeb.Models.CustomerPageViewModel
 @{
-    ViewData["Title"] = "Khach tai ban";
+    ViewData["Title"] = "Khách tại bàn";
 
     var categories = Model.Categories.OrderBy(x => x.DisplayOrder).ToList();
-    var dishes = Model.Dishes.ToList();
-    var featuredDish = dishes.FirstOrDefault();
-
-    var cartItems = new[]
+    var sortOptions = new[]
     {
-        new { Name = "Lau thai tom nam", Note = "1/2 cay, them nam kim cham", Qty = 1, Price = "289.000d" },
-        new { Name = "Tra dao cam sa", Note = "70% duong, it da, them thach dao", Qty = 2, Price = "84.000d" },
-        new { Name = "Bo nuong sot tieu den", Note = "Khong hanh", Qty = 1, Price = "189.000d" }
+        new { Value = "popular", Label = "Phổ biến nhất" },
+        new { Value = "price-asc", Label = "Giá tăng dần" },
+        new { Value = "price-desc", Label = "Giá giảm dần" },
+        new { Value = "name", Label = "Tên A-Z" }
     };
-
-    var chatMessages = new[]
-    {
-        new { Sender = "Ban A03", Content = "Cho minh xin them 2 ly nuoc da va doi sang chen nho.", Type = "user" },
-        new { Sender = "Nhan vien Lan", Content = "Da nhan. Em se mang ra trong 2 phut va cap nhat bep ve yeu cau doi chen.", Type = "staff" },
-        new { Sender = "Ban A03", Content = "Cho hoi mon lau con bao lau nua xong?", Type = "user" },
-        new { Sender = "Nhan vien Lan", Content = "Mon dang o muc 80%, du kien 5 phut nua phuc vu tai ban.", Type = "staff" }
-    };
-
-    var timeline = new[]
-    {
-        new { Time = "18:42", Title = "Don #A03-104 da gui bep", State = "success" },
-        new { Time = "18:49", Title = "Tra dao da phuc vu", State = "neutral" },
-        new { Time = "18:51", Title = "Yeu cau them chen da duoc nhan", State = "neutral" },
-        new { Time = "18:56", Title = "Lau thai dang hoan thien", State = "warning" }
-    };
+    var imageVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 }
 
-<section class="page-intro">
-    <div>
-        <span class="eyebrow">Khach hang tai ban</span>
-        <h1>Trai nghiem dat mon tu QR, gio hang chung va chat truc tiep voi phuc vu.</h1>
-        @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
-        {
-            <p>@Model.ErrorMessage</p>
-        }
-    </div>
-    <div class="intro-badges">
-        <span class="status-badge">Ban A03 | Khu san vuon</span>
-        <span class="status-badge muted">Session QR hop le</span>
-        <span class="status-badge muted">@dishes.Count mon dang hien thi</span>
-    </div>
-</section>
+<div class="customer-page" data-auto-refresh-url="@Url.Action("Customer", new { tableCode = Model.TableCode, search = Model.SearchTerm, category = Model.CategoryFilter, sort = Model.SortBy })" data-auto-refresh-seconds="20">
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="auth-alert success admin-alert">@Model.StatusMessage</div>
+    }
 
-<section class="customer-grid">
-    <div class="customer-main">
-        <article class="panel-card order-banner">
-            <div>
-                <span class="eyebrow">Menu dien tu</span>
-                <h2>Moi nguoi trong ban deu co the them mon vao mot gio hang chung.</h2>
-                <p>Tinh nang mau: tim kiem nhanh, loc danh muc, de xuat mon ban chay, tu tuy chinh topping va ghi chu mon.</p>
-            </div>
-            <div class="qr-summary">
-                <div>
-                    <strong>QR Table A03</strong>
-                    <span>Xac thuc trong pham vi cua hang</span>
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="auth-alert admin-alert">@Model.ErrorMessage</div>
+    }
+
+    <button class="customer-cart-fab" type="button" data-cart-open aria-controls="customer-cart-drawer" aria-label="Mở giỏ hàng">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6.5 6.5h15l-1.7 8.2a2 2 0 0 1-2 1.6H9a2 2 0 0 1-2-1.6L5.4 3.8H2.5" />
+            <circle cx="9.5" cy="20" r="1.3" />
+            <circle cx="17.5" cy="20" r="1.3" />
+        </svg>
+        <span>@Model.CartItems.Sum(x => x.Quantity)</span>
+    </button>
+
+    <section class="customer-grid customer-grid--fixed-side">
+        <div class="customer-main">
+            <article class="panel-card menu-explorer" id="menu-list">
+                <div class="menu-sticky-toolbar" data-menu-sticky-toolbar>
+                    <div class="panel-heading">
+                        <div>
+                            <h2>Menu</h2>
+                        </div>
+                        <div class="inline-actions">
+                            <button class="btn btn-ghost btn-small menu-toolbar-toggle" type="button" data-menu-toolbar-toggle aria-expanded="true">Thu nhỏ</button>
+                            <span class="status-badge">@Model.Dishes.Count món</span>
+                        </div>
+                    </div>
+                    <div class="menu-toolbar-body" data-menu-toolbar-body>
+                        <form class="toolbar-form" method="get">
+                            <input type="hidden" name="tableCode" value="@Model.TableCode" />
+                            <label class="auth-field">
+                                <span>Tìm tên món</span>
+                                <div class="search-input-wrap">
+                                    <span class="search-input-wrap__icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="11" cy="11" r="7"></circle>
+                                            <path d="m20 20-3.5-3.5"></path>
+                                        </svg>
+                                    </span>
+                                    <input type="text" name="search" value="@Model.SearchTerm" placeholder="VD: lẩu, trà đào, khoai..." />
+                                </div>
+                            </label>
+                            <label class="auth-field">
+                                <span>Danh mục</span>
+                                <select name="category">
+                                    <option value="all" selected="@(Model.CategoryFilter == "all" ? "selected" : null)">Tất cả</option>
+                                    @foreach (var category in categories)
+                                    {
+                                        <option value="@category.CategoryCode" selected="@(string.Equals(Model.CategoryFilter, category.CategoryCode, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@category.CategoryName</option>
+                                    }
+                                </select>
+                            </label>
+                            <label class="auth-field">
+                                <span>Sắp xếp</span>
+                                <select name="sort">
+                                    @foreach (var option in sortOptions)
+                                    {
+                                        <option value="@option.Value" selected="@(Model.SortBy == option.Value ? "selected" : null)">@option.Label</option>
+                                    }
+                                </select>
+                            </label>
+                            <div class="toolbar-actions">
+                                <button class="btn btn-accent" type="submit">Áp dụng</button>
+                                <a class="btn btn-ghost" asp-action="Customer" asp-route-tableCode="@Model.TableCode">Bỏ lọc</a>
+                            </div>
+                        </form>
+
+                        <div class="category-row">
+                            <a class="category-pill @(Model.CategoryFilter == "all" ? "active" : "")" asp-action="Customer" asp-route-tableCode="@Model.TableCode" asp-route-search="@Model.SearchTerm" asp-route-sort="@Model.SortBy">Tất cả</a>
+                            @foreach (var category in categories)
+                            {
+                                <a class="category-pill @(string.Equals(Model.CategoryFilter, category.CategoryCode, StringComparison.OrdinalIgnoreCase) ? "active" : "")"
+                                   asp-action="Customer"
+                                   asp-route-tableCode="@Model.TableCode"
+                                   asp-route-search="@Model.SearchTerm"
+                                   asp-route-sort="@Model.SortBy"
+                                   asp-route-category="@category.CategoryCode">@category.CategoryName</a>
+                            }
+                        </div>
+                    </div>
                 </div>
-                <button class="btn btn-accent" type="button">Goi them mon</button>
-            </div>
-        </article>
+                <div class="menu-sticky-spacer" data-menu-sticky-spacer></div>
 
-        @if (featuredDish is not null)
-        {
-            <article class="panel-card feature-dish">
-                @if (!string.IsNullOrWhiteSpace(featuredDish.ImageUrl))
+                <div class="menu-grid">
+                    @if (Model.Dishes.Count == 0)
+                    {
+                        <div class="panel-card empty-card">
+                            <strong>Không tìm thấy món phù hợp.</strong>
+                            <span>Thay đổi từ khóa tìm kiếm hoặc chọn lại danh mục.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var dish in Model.Dishes)
+                        {
+                            var meta = $"{dish.CategoryName} | {(dish.IsBestSeller ? "Best seller | " : string.Empty)}{dish.PreparationTimeMinutes} phút";
+                            <article class="dish-card @(dish.IsAvailable ? string.Empty : "dish-card--sold-out")">
+                                <div class="dish-card__image-wrap">
+                                    @if (!string.IsNullOrWhiteSpace(dish.ImageUrl))
+                                    {
+                                        var dishImageUrl = dish.ImageUrl.StartsWith("/", StringComparison.Ordinal)
+                                            ? $"{dish.ImageUrl}?v={imageVersion}"
+                                            : dish.ImageUrl;
+                                        <img class="dish-card__photo" src="@dishImageUrl" alt="@dish.Name" onerror="this.onerror=null;this.src='/images/menu/default-dish.svg';" />
+                                    }
+                                    else
+                                    {
+                                        <div class="dish-card__photo dish-card__photo--empty">Chưa có ảnh</div>
+                                    }
+                                    <span class="dish-card__badge">@dish.ItemCode</span>
+                                    @if (!dish.IsAvailable)
+                                    {
+                                        <span class="dish-card__sold-out">Hết hàng</span>
+                                    }
+                                </div>
+                                <div class="dish-card__body">
+                                    <div class="dish-card__header">
+                                        <div>
+                                            <h3>@dish.Name</h3>
+                                            <span>@meta</span>
+                                            @if (dish.SpiceLevel > 0)
+                                            {
+                                                <span class="spice-level" aria-label="Mức cay @dish.SpiceLevel/5">@string.Concat(Enumerable.Repeat("🌶", dish.SpiceLevel))</span>
+                                            }
+                                        </div>
+                                        <strong>@dish.Price.ToString("N0")đ</strong>
+                                    </div>
+                                    <p>@dish.Description</p>
+                                    <details class="dish-details">
+                                        <summary>Xem chi tiết món</summary>
+                                        <div class="dish-details__content">
+                                            <div>
+                                                <strong>Thành phần</strong>
+                                                <p>@dish.IngredientSummary</p>
+                                            </div>
+                                            <div>
+                                                <strong>Phục vụ / khẩu phần</strong>
+                                                <p>@dish.ServingSuggestion</p>
+                                            </div>
+                                            <div>
+                                                <strong>Tùy chỉnh có sẵn</strong>
+                                                <p>@dish.CustomizationSummary</p>
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    <form class="dish-order-form" asp-action="AddToCart" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="TableCode" value="@Model.TableCode" />
+                                        <input type="hidden" name="ItemId" value="@dish.ItemId" />
+                                        <div class="dish-order-grid dish-order-grid--wide">
+                                            <label class="auth-field">
+                                                <span>Số lượng</span>
+                                                <select name="Quantity">
+                                                    @for (var quantity = 1; quantity <= 6; quantity++)
+                                                    {
+                                                        <option value="@quantity">@quantity</option>
+                                                    }
+                                                </select>
+                                            </label>
+                                            <label class="auth-field">
+                                                <span>Mức đường</span>
+                                                <select name="SugarLevel">
+                                                    <option value="">Mặc định</option>
+                                                    <option value="100%">100%</option>
+                                                    <option value="70%">70%</option>
+                                                    <option value="50%">50%</option>
+                                                    <option value="30%">30%</option>
+                                                    <option value="Không đường">Không đường</option>
+                                                </select>
+                                            </label>
+                                            <label class="auth-field">
+                                                <span>Mức đá</span>
+                                                <select name="IceLevel">
+                                                    <option value="">Mặc định</option>
+                                                    <option value="Nhiều đá">Nhiều đá</option>
+                                                    <option value="Ít đá">Ít đá</option>
+                                                    <option value="Không đá">Không đá</option>
+                                                </select>
+                                            </label>
+                                            <label class="auth-field">
+                                                <span>Topping</span>
+                                                <input name="ToppingChoice" placeholder="VD: tran chau, milk foam..." />
+                                            </label>
+                                            <label class="auth-field dish-order-grid__full">
+                                                <span>Ghi chú cho bếp/bar</span>
+                                                <input name="Note" placeholder="VD: không hành, ít cay, tách sốt..." />
+                                            </label>
+                                        </div>
+                                        <div class="dish-card__actions">
+                                            <button class="btn btn-accent btn-small" type="submit" disabled="@(!dish.IsAvailable)">
+                                                @(dish.IsAvailable ? "Thêm vào giỏ chung" : "Hết hàng")
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </article>
+                        }
+                    }
+                </div>
+            </article>
+        </div>
+
+        <aside class="customer-side" id="customer-cart-drawer" data-cart-drawer>
+            <div class="customer-side__floating">
+            <article class="panel-card">
+                <div class="panel-heading">
+                    <div>
+                        <h3>Bàn @Model.TableCode đang chọn món</h3>
+                    </div>
+                    <span class="status-badge">@Model.CartItems.Sum(x => x.Quantity) món</span>
+                    <button class="cart-drawer-close" type="button" data-cart-close aria-label="Đóng giỏ hàng">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+
+                @if (Model.CartItems.Count == 0)
                 {
-                    <div class="feature-dish__media">
-                        <img src="@featuredDish.ImageUrl" alt="@featuredDish.Name" />
+                    <div class="cart-item">
+                        <div>
+                            <strong>Giỏ hàng đang trống</strong>
+                            <span>Hãy thêm món ở danh sách bên trái trước khi gửi order.</span>
+                        </div>
                     </div>
                 }
                 else
                 {
-                    <div class="feature-dish__media feature-dish__media--empty">
-                        <span>Chua co anh mon</span>
-                    </div>
-                }
-                <div class="feature-dish__content">
-                    <span class="eyebrow">Mon dang duoc xem</span>
-                    <h2>@featuredDish.Name</h2>
-                    <p>@featuredDish.Description</p>
-                    <div class="feature-dish__meta">
-                        <span class="status-badge">@featuredDish.CategoryName</span>
-                        <span class="status-badge muted">@featuredDish.PreparationTimeMinutes phut</span>
-                        <span class="status-badge muted">@featuredDish.Price.ToString("N0")d</span>
-                    </div>
-                    <div class="detail-grid">
-                        <div class="detail-card">
-                            <strong>Thanh phan</strong>
-                            <p>@featuredDish.IngredientSummary</p>
-                        </div>
-                        <div class="detail-card">
-                            <strong>Goi y phuc vu</strong>
-                            <p>@featuredDish.ServingSuggestion</p>
-                        </div>
-                        <div class="detail-card">
-                            <strong>Tuy chinh</strong>
-                            <p>@featuredDish.CustomizationSummary</p>
-                        </div>
-                    </div>
-                </div>
-            </article>
-        }
-
-        <article class="panel-card menu-explorer">
-            <div class="toolbar-row">
-                <div class="search-box">
-                    <span>Tim mon</span>
-                    <input type="text" value="Mon an dang doc tu SQL Server..." readonly />
-                </div>
-                <div class="sort-group">
-                    <button class="filter-chip active" type="button">Theo du lieu SQL</button>
-                    <button class="filter-chip" type="button">Gia tang</button>
-                    <button class="filter-chip" type="button">Gia giam</button>
-                </div>
-            </div>
-            <div class="category-row">
-                @for (var i = 0; i < categories.Count; i++)
-                {
-                    <button class="category-pill @(i == 0 ? "active" : "")" type="button">@categories[i].CategoryName</button>
-                }
-            </div>
-
-            <div class="menu-grid">
-                @foreach (var dish in dishes)
-                {
-                    var meta = $"{dish.CategoryName} | {(dish.IsBestSeller ? "Best seller | " : string.Empty)}{dish.PreparationTimeMinutes} phut";
-                    <article class="dish-card">
-                        <div class="dish-card__image-wrap">
-                            @if (!string.IsNullOrWhiteSpace(dish.ImageUrl))
-                            {
-                                <img class="dish-card__photo" src="@dish.ImageUrl" alt="@dish.Name" />
-                            }
-                            else
-                            {
-                                <div class="dish-card__photo dish-card__photo--empty">Chua co anh</div>
-                            }
-                            <span class="dish-card__badge">@dish.ItemCode</span>
-                        </div>
-                        <div class="dish-card__body">
-                            <div class="dish-card__header">
+                    <div class="cart-stack">
+                        @foreach (var item in Model.CartItems)
+                        {
+                            <div class="cart-item">
                                 <div>
-                                    <h3>@dish.Name</h3>
-                                    <span>@meta</span>
+                                    <strong>@item.Name</strong>
+                                    <span>@(string.IsNullOrWhiteSpace(item.Note) ? "Không có ghi chú thêm." : item.Note)</span>
                                 </div>
-                                <strong>@dish.Price.ToString("N0")d</strong>
-                            </div>
-                            <p>@dish.Description</p>
-                            <div class="option-row">
-                                <span class="mini-tag">Tuy chinh da/duong</span>
-                                <span class="mini-tag">Them topping</span>
-                                <span class="mini-tag">Ghi chu bep</span>
-                            </div>
-                            <details class="dish-details">
-                                <summary>Xem chi tiet mon</summary>
-                                <div class="dish-details__content">
-                                    <div>
-                                        <strong>Thanh phan noi bat</strong>
-                                        <p>@dish.IngredientSummary</p>
-                                    </div>
-                                    <div>
-                                        <strong>Phuc vu / khau phan</strong>
-                                        <p>@dish.ServingSuggestion</p>
-                                    </div>
-                                    <div>
-                                        <strong>Tuy chinh co san</strong>
-                                        <p>@dish.CustomizationSummary</p>
-                                    </div>
+                                <div class="cart-item__meta">
+                                    <span class="cart-item__quantity">x@(item.Quantity)</span>
+                                    <strong>@item.LineTotal.ToString("N0")đ</strong>
                                 </div>
-                            </details>
-                            <div class="dish-card__actions">
-                                <button class="btn btn-ghost btn-small" type="button">Xem chi tiet</button>
-                                <button class="btn btn-accent btn-small" type="button">Them vao gio</button>
+                                <form class="cart-remove-form" asp-action="RemoveCartItem" method="post">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="TableCode" value="@Model.TableCode" />
+                                    <input type="hidden" name="ItemId" value="@item.ItemId" />
+                                    <input type="hidden" name="Note" value="@item.Note" />
+                                    <button class="cart-item__remove" type="submit" aria-label="Hủy @item.Name">
+                                        <span aria-hidden="true">&times;</span>
+                                    </button>
+                                </form>
                             </div>
-                        </div>
-                    </article>
+                        }
+                    </div>
+                    <div class="bill-box bill-stack">
+                        <div><span>Tạm tính giỏ đang chọn</span><strong>@Model.CartSubtotal.ToString("N0")đ</strong></div>
+                        <div><span>Phí phục vụ</span><strong>@Model.ServiceFee.ToString("N0")đ</strong></div>
+                        <div class="bill-box__total"><span>Tổng gửi order</span><strong>@Model.CartTotal.ToString("N0")đ</strong></div>
+                    </div>
+                    <form asp-action="SubmitOrder" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="TableCode" value="@Model.TableCode" />
+                        <button class="btn btn-accent w-100" type="submit">Xác nhận và gửi order</button>
+                    </form>
                 }
-            </div>
-        </article>
-
-        <div class="two-column-panels">
-            <article class="panel-card">
-                <div class="panel-heading">
-                    <div>
-                        <span class="eyebrow">Goi y them</span>
-                        <h3>Mon mua kem</h3>
-                    </div>
-                    <span class="status-badge muted">AI suggestion</span>
-                </div>
-                <div class="suggestion-stack">
-                    <div class="suggestion-item">
-                        <strong>Combo lau + tra dao + flan</strong>
-                        <span>Giam 12% cho ban 4 nguoi</span>
-                    </div>
-                    <div class="suggestion-item">
-                        <strong>Bo vien pho mai</strong>
-                        <span>Thuong di kem voi lau thai trong 68% don hang tuong tu</span>
-                    </div>
-                    <div class="suggestion-item">
-                        <strong>Khan giay premium</strong>
-                        <span>Co the goi ngay trong khung chat dich vu</span>
-                    </div>
-                </div>
             </article>
 
             <article class="panel-card">
                 <div class="panel-heading">
                     <div>
-                        <span class="eyebrow">Danh gia sau bua an</span>
-                        <h3>Popup mau sau thanh toan</h3>
+                        <h3>Theo dõi order của bạn</h3>
                     </div>
-                    <span class="rating-score">4.8/5</span>
                 </div>
-                <div class="rating-card">
-                    <div class="rating-stars">
-                        <span class="filled"></span>
-                        <span class="filled"></span>
-                        <span class="filled"></span>
-                        <span class="filled"></span>
-                        <span class="filled"></span>
-                    </div>
-                    <p>Mon an vua vi, ra mon nhanh. Chatbox giup goi them vat dung kha tien.</p>
-                    <button class="btn btn-ghost btn-small" type="button">Gui nhan xet</button>
-                </div>
-            </article>
-        </div>
-    </div>
-
-    <aside class="customer-side">
-        <article class="panel-card sticky-panel">
-            <div class="panel-heading">
-                <div>
-                    <span class="eyebrow">Gio hang chung</span>
-                    <h3>Don tam tinh cua ban A03</h3>
-                </div>
-                <span class="status-badge">4 thanh vien</span>
-            </div>
-            <div class="cart-stack">
-                @foreach (var item in cartItems)
+                @if (Model.SubmittedOrders.Count == 0)
                 {
-                    <div class="cart-item">
+                    <div class="timeline-item">
+                        <strong>Chưa có order nào được gửi.</strong>
+                    </div>
+                }
+                else
+                {
+                    var progressSteps = new[] { "Đã gửi", "Đã nhận", "Đang chế biến", "Sẵn sàng", "Hoàn tất" };
+                    <div class="customer-order-stack">
+                        @foreach (var order in Model.SubmittedOrders)
+                        {
+                            <article class="customer-order-card">
+                                <div class="customer-order-card__top">
+                                    <div>
+                                        <strong>#@order.OrderCode</strong>
+                                        <span>@order.SubmittedTimeLabel | @order.ItemCount món | @order.TotalAmount.ToString("N0")đ</span>
+                                    </div>
+                                    <span class="status-badge">@order.StatusLabel</span>
+                                </div>
+
+                                <div class="order-progress" aria-label="Tiến trình order @order.OrderCode">
+                                    @for (var stepIndex = 0; stepIndex < progressSteps.Length; stepIndex++)
+                                    {
+                                        var stepNumber = stepIndex + 1;
+                                        <span class="order-progress__step @(order.ProgressStep >= stepNumber ? "is-done" : "")">
+                                            <i>@stepNumber</i>
+                                            <small>@progressSteps[stepIndex]</small>
+                                        </span>
+                                    }
+                                </div>
+
+                                <div class="customer-order-items">
+                                    @foreach (var item in order.Items)
+                                    {
+                                        <div class="customer-order-item">
+                                            <div>
+                                                <strong>@item.Name</strong>
+                                                @if (!string.IsNullOrWhiteSpace(item.Note))
+                                                {
+                                                    <span>@item.Note</span>
+                                                }
+                                            </div>
+                                            <span>@item.LineTotal.ToString("N0")đ</span>
+                                        </div>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </div>
+                    <div class="bill-box bill-stack">
+                        <div><span>Tạm tính đơn đã gửi</span><strong>@Model.SubmittedSubtotal.ToString("N0")đ</strong></div>
+                        <div><span>Phí phục vụ</span><strong>@Model.SubmittedServiceFee.ToString("N0")đ</strong></div>
+                        <div class="bill-box__total"><span>Tổng thanh toán</span><strong>@Model.SubmittedTotal.ToString("N0")đ</strong></div>
+                    </div>
+                }
+            </article>
+
+            @if (Model.CanSubmitReview)
+            {
+                <article class="panel-card customer-review-card">
+                    <div class="panel-heading">
                         <div>
-                            <strong>@item.Name x@item.Qty</strong>
-                            <span>@item.Note</span>
+                            <h3>Đánh giá món đã phục vụ</h3>
                         </div>
-                        <strong>@item.Price</strong>
+                        <span class="status-badge">5 sao</span>
                     </div>
-                }
-            </div>
-            <div class="bill-box">
-                <div><span>Tam tinh</span><strong>562.000d</strong></div>
-                <div><span>Phi phuc vu</span><strong>22.000d</strong></div>
-                <div><span>Khuyen mai combo</span><strong>-32.000d</strong></div>
-                <div class="bill-box__total"><span>Tong thanh toan</span><strong>552.000d</strong></div>
-            </div>
-            <div class="pay-actions">
-                <button class="btn btn-accent" type="button">Xac nhan gui don</button>
-                <button class="btn btn-ghost" type="button">Yeu cau thanh toan</button>
-            </div>
-            <div class="payment-methods">
-                <span class="mini-tag">Tien mat</span>
-                <span class="mini-tag">QR chuyen khoan</span>
-                <span class="mini-tag">Vi dien tu</span>
-            </div>
-        </article>
 
-        <article class="panel-card">
-            <div class="panel-heading">
-                <div>
-                    <span class="eyebrow">Chatbox ho tro</span>
-                    <h3>Hoi dap va yeu cau phuc vu</h3>
+                    <form class="customer-review-form" asp-action="SubmitReview" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="TableCode" value="@Model.TableCode" />
+                        <input type="hidden" name="ServiceRating" value="0" />
+                        <div class="star-rating" aria-label="Chọn số sao đánh giá">
+                            @for (var rating = 5; rating >= 1; rating--)
+                            {
+                                <input id="food-rating-@rating" type="radio" name="FoodRating" value="@rating" checked="@(rating == 5 ? "checked" : null)" />
+                                <label for="food-rating-@rating" title="@rating sao">★</label>
+                            }
+                        </div>
+                        <textarea name="Comment" maxlength="300" rows="3" placeholder="Nhận xét của bạn về món ăn, phục vụ..."></textarea>
+                        <button class="btn btn-accent w-100" type="submit">Gửi đánh giá</button>
+                    </form>
+
+                    @if (Model.RecentReviews.Count > 0)
+                    {
+                        <div class="customer-review-list">
+                            @foreach (var review in Model.RecentReviews.Take(2))
+                            {
+                                <div class="customer-review-item">
+                                    <strong>@review.FoodRating/5 sao</strong>
+                                    <span>@review.CreatedAtLabel</span>
+                                    @if (!string.IsNullOrWhiteSpace(review.Comment))
+                                    {
+                                        <p>@review.Comment</p>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </article>
+            }
+
+            <article class="panel-card customer-chat-card">
+                <div class="panel-heading">
+                    <div>
+                        <h3>Bàn @Model.TableCode cần hỗ trợ</h3>
+                    </div>
+                    <span class="status-badge">@Model.ChatMessages.Count tin</span>
                 </div>
-                <span class="status-badge muted">Nhan vien dang online</span>
-            </div>
-            <div class="chat-thread">
-                @foreach (var chat in chatMessages)
-                {
-                    <div class="chat-bubble @(chat.Type == "user" ? "chat-bubble--user" : "chat-bubble--staff")">
-                        <strong>@chat.Sender</strong>
-                        <p>@chat.Content</p>
-                    </div>
-                }
-            </div>
-            <div class="chat-input">
-                <input type="text" value="Nhap yeu cau: them bat, doi mon, hoi thong tin..." readonly />
-                <button class="btn btn-accent btn-small" type="button">Gui</button>
-            </div>
-        </article>
 
-        <article class="panel-card">
-            <div class="panel-heading">
-                <div>
-                    <span class="eyebrow">Trang thai don</span>
-                    <h3>Theo doi theo thoi gian thuc</h3>
+                <div class="customer-chat-thread">
+                    @if (Model.ChatMessages.Count == 0)
+                    {
+                        <div class="chat-empty">
+                            <strong>Chưa có tin nhắn.</strong>
+                            <span>Nhắn món thiếu, xin thêm chén, gọi nhân viên hoặc hỏi thanh toán.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var message in Model.ChatMessages)
+                        {
+                            var side = string.Equals(message.SenderRole, "Customer", StringComparison.OrdinalIgnoreCase) ? "mine" : "theirs";
+                            <div class="chat-bubble chat-bubble--@message.Direction chat-message chat-message--@side">
+                                @if (side == "theirs")
+                                {
+                                    <strong class="chat-message__name">@message.SenderName</strong>
+                                }
+                                <p>@message.Message</p>
+                                <small class="chat-message__time">@message.TimeLabel</small>
+                            </div>
+                        }
+                    }
                 </div>
-            </div>
-            <div class="timeline-stack">
-                @foreach (var item in timeline)
-                {
-                    <div class="timeline-item timeline-item--@item.State">
-                        <span>@item.Time</span>
-                        <strong>@item.Title</strong>
-                    </div>
-                }
-            </div>
-        </article>
-    </aside>
-</section>
 
-
+                <form class="customer-chat-form" asp-action="SendCustomerMessage" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="TableCode" value="@Model.TableCode" />
+                    <input name="Message" maxlength="300" autocomplete="off" placeholder="Nhắn cho nhân viên..." />
+                    <button class="btn btn-accent btn-small" type="submit">Gửi</button>
+                </form>
+            </article>
+            </div>
+        </aside>
+        <button class="cart-drawer-backdrop" type="button" data-cart-close aria-label="Đóng giỏ hàng"></button>
+    </section>
+</div>

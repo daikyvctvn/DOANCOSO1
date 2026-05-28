@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="Cho anh ca nhan">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#96382d"/>
+      <stop offset="1" stop-color="#d08b2e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect x="90" y="90" width="1420" height="720" rx="44" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.35)" stroke-width="6"/>
+  <circle cx="640" cy="390" r="110" fill="#fff5dc" opacity="0.92"/>
+  <path d="M360 700 660 510 820 620 960 480 1240 700Z" fill="#fff5dc" opacity="0.85"/>
+  <text x="800" y="205" text-anchor="middle" fill="#fff8ea" font-family="Segoe UI, Arial, sans-serif" font-size="58" font-weight="800">DAT ANH CA NHAN TAI DAY</text>
+  <text x="800" y="780" text-anchor="middle" fill="#fff8ea" font-family="Segoe UI, Arial, sans-serif" font-size="34">Admin thay bang anh-1.jpg den anh-6.jpg</text>
+</svg>
