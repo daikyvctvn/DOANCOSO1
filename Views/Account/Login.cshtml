@@ -17,6 +17,7 @@
         <form method="post" class="auth-form">
             @Html.AntiForgeryToken()
             <input asp-for="ReturnUrl" type="hidden" />
+            <input asp-for="TargetRole" type="hidden" />
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
             <label class="auth-field">

@@ -1,9 +1,32 @@
 @{
     var controller = ViewContext.RouteData.Values["controller"]?.ToString() ?? "Home";
     var action = ViewContext.RouteData.Values["action"]?.ToString() ?? "Index";
-    var isAuthenticated = User?.Identity?.IsAuthenticated ?? false;
-    var currentName = User?.Identity?.Name ?? string.Empty;
-    var currentRole = User?.Claims.FirstOrDefault(x => x.Type == System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
+    var userPrincipal = User;
+    const string adminAuthType = "TableOrderWeb.AdminAuth";
+    const string staffAuthType = "TableOrderWeb.StaffAuth";
+    var requestedPortal = (Context.Request.Query["portal"].FirstOrDefault() ?? string.Empty).Trim();
+    var hasAdminIdentity = userPrincipal?.Identities.Any(x => x.IsAuthenticated && string.Equals(x.AuthenticationType, adminAuthType, StringComparison.OrdinalIgnoreCase)) ?? false;
+    var hasStaffIdentity = userPrincipal?.Identities.Any(x => x.IsAuthenticated && string.Equals(x.AuthenticationType, staffAuthType, StringComparison.OrdinalIgnoreCase)) ?? false;
+    var currentRole = string.Equals(requestedPortal, "Admin", StringComparison.OrdinalIgnoreCase) && hasAdminIdentity
+        ? "Admin"
+        : (string.Equals(requestedPortal, "Staff", StringComparison.OrdinalIgnoreCase) && hasStaffIdentity
+            ? "Staff"
+            : (action == "Admin" && hasAdminIdentity
+                ? "Admin"
+                : (hasStaffIdentity ? "Staff" : (hasAdminIdentity ? "Admin" : string.Empty))));
+    var isAuthenticated = !string.IsNullOrWhiteSpace(currentRole);
+    var logoutRole = currentRole;
+    var preferredAuthType = string.Equals(currentRole, "Admin", StringComparison.OrdinalIgnoreCase)
+        ? adminAuthType
+        : staffAuthType;
+    var currentName = userPrincipal?.Identities.FirstOrDefault(x => string.Equals(x.AuthenticationType, preferredAuthType, StringComparison.OrdinalIgnoreCase))?.Name
+        ?? userPrincipal?.Identity?.Name
+        ?? string.Empty;
+    var isAdminExperience = string.Equals(currentRole, "Admin", StringComparison.OrdinalIgnoreCase);
+    var isStaffExperience = string.Equals(currentRole, "Staff", StringComparison.OrdinalIgnoreCase);
+    var homeAction = isAdminExperience ? "Admin" : (isStaffExperience ? "Staff" : "Index");
+    var portalRoute = isAuthenticated ? currentRole : null;
+    var portalQuery = isAuthenticated ? $"?portal={currentRole}" : string.Empty;
     var routeTableCode = ViewContext.RouteData.Values["tableCode"]?.ToString()
         ?? Context.Request.Query["tableCode"].FirstOrDefault()
         ?? "A01";
@@ -22,7 +45,7 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <style>
         html { font-size: 16px; min-height: 100%; }
-        body { min-height: 100vh; margin: 0; color: #25190e; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background: radial-gradient(circle at top left, rgba(208, 139, 46, 0.18), transparent 28%), radial-gradient(circle at top right, rgba(189, 93, 56, 0.14), transparent 32%), linear-gradient(180deg, #fffdf8 0%, #f8f1e5 100%); }
+        body { min-height: 100vh; margin: 0; overflow-x: hidden; color: #25190e; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background: radial-gradient(circle at top left, rgba(208, 139, 46, 0.18), transparent 28%), radial-gradient(circle at top right, rgba(189, 93, 56, 0.14), transparent 32%), linear-gradient(180deg, #fffdf8 0%, #f8f1e5 100%); }
         a { color: inherit; text-decoration: none; }
         .container { max-width: 1320px; margin: 0 auto; padding: 0 20px; }
         .app-header { position: sticky; top: 0; z-index: 30; backdrop-filter: blur(14px); background: rgba(255, 248, 239, 0.82); border-bottom: 1px solid rgba(82, 55, 27, 0.12); }
@@ -76,7 +99,8 @@
                 <a class="brand-mark"
                    asp-area=""
                    asp-controller="Home"
-                   asp-action="@(isCustomerExperience ? "Customer" : "Index")"
+                   asp-action="@(isCustomerExperience ? "Customer" : homeAction)"
+                   asp-route-portal="@(isCustomerExperience ? null : portalRoute)"
                    asp-route-tableCode="@(isCustomerExperience ? routeTableCode : null)">
                     <span class="brand-mark__spice-logo" aria-label="Spice Temple Thai Inspired">
                         <span class="brand-mark__spice-name">
@@ -96,15 +120,41 @@
                 else
                 {
                     <nav class="app-nav">
+                        @if (isAdminExperience)
+                        {
+                            <a class="@(action == "Index" ? "active" : "")" href="/?portal=Admin">Tổng quan</a>
+                            <a class="@(action == "Restaurant" ? "active" : "")" href="/Home/Restaurant?portal=Admin">Nhà hàng</a>
+                            <a class="@(action == "Staff" ? "active" : "")" href="/Home/Staff?portal=Admin">Nhân viên</a>
+                            <a class="@(action == "Admin" ? "active" : "")" href="/Home/Admin?portal=Admin">Quản trị</a>
+                        }
+                        else if (isStaffExperience)
+                        {
+                            <a class="@(action == "Index" ? "active" : "")" href="/?portal=Staff">Tổng quan</a>
+                            <a class="@(action == "Restaurant" ? "active" : "")" href="/Home/Restaurant?portal=Staff">Nhà hàng</a>
+                            <a class="@(action == "Staff" ? "active" : "")" href="/Home/Staff?portal=Staff">Nhân viên</a>
+                        }
+                        else
+                        {
+                            <a class="@(action == "Index" ? "active" : "")" href="/">Tổng quan</a>
+                        }
+                    </nav>
+                    <nav class="app-nav" hidden>
+                        @if (!isAuthenticated)
+                        {
                         <a class="@(action == "Index" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Index">Tổng quan</a>
-                        @if (isAuthenticated)
+                        }
+                        @if (isStaffExperience)
                         {
                             <a class="@(action == "Restaurant" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Restaurant">Nh&agrave; h&agrave;ng</a>
                             <a class="@(action == "Staff" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Staff">Nhân viên</a>
-                            @if (string.Equals(currentRole, "Admin", StringComparison.OrdinalIgnoreCase))
+                            @if (userPrincipal?.IsInRole("Admin") ?? false)
                             {
                                 <a class="@(action == "Admin" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Admin">Quản trị</a>
                             }
+                        }
+                        @if (isAdminExperience)
+                        {
+                            <a class="@(action == "Admin" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Admin">Quáº£n trá»‹</a>
                         }
                     </nav>
                     <div class="header-actions">
@@ -116,6 +166,7 @@
                             </div>
                             <form asp-controller="Account" asp-action="Logout" method="post">
                                 @Html.AntiForgeryToken()
+                                <input type="hidden" name="schemeRole" value="@logoutRole" />
                                 <button class="btn btn-ghost btn-small" type="submit">Đăng xuất</button>
                             </form>
                         }
@@ -124,7 +175,6 @@
                             <a class="btn btn-ghost btn-small" asp-controller="Account" asp-action="Login">Đăng nhập</a>
                             <a class="btn btn-accent btn-small" asp-controller="Account" asp-action="Register">Đăng ký</a>
                         }
-                        <div class="header-chip">Demo UI ASP.NET Core MVC</div>
                     </div>
                 }
             </div>

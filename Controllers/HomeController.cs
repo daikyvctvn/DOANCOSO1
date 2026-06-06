@@ -8,6 +8,10 @@ namespace TableOrderWeb.Controllers;
 
 public class HomeController : Controller
 {
+    private const string AdminAuthScheme = "TableOrderWeb.AdminAuth";
+    private const string StaffAuthScheme = "TableOrderWeb.StaffAuth";
+    private const string StaffOrAdminAuthSchemes = StaffAuthScheme + "," + AdminAuthScheme;
+    private const string StaffOrAdminRoles = "Staff,Admin";
     private const string CustomerTableCookieName = "TableOrderWeb.CustomerTable";
 
     private readonly IConfiguration _configuration;
@@ -40,6 +44,11 @@ public class HomeController : Controller
             return tableAccess.Redirect;
         }
 
+        if (await EnsureCustomerTableAvailableAsync(tableAccess.TableCode, cancellationToken) is { } blocked)
+        {
+            return blocked;
+        }
+
         var model = await _menuRepository.GetCustomerMenuAsync(cancellationToken);
         var allDishes = model.Dishes.ToList();
         model.TableCode = tableAccess.TableCode;
@@ -56,7 +65,7 @@ public class HomeController : Controller
     }
 
     [AllowAnonymous]
-    public IActionResult Table(string? tableCode)
+    public async Task<IActionResult> Table(string? tableCode, CancellationToken cancellationToken)
     {
         var normalizedTableCode = TryNormalizeTableCode(tableCode);
         if (normalizedTableCode is null)
@@ -65,10 +74,15 @@ public class HomeController : Controller
             return RedirectToAction(nameof(Index));
         }
 
+        if (await EnsureCustomerTableAvailableAsync(normalizedTableCode, cancellationToken) is { } blocked)
+        {
+            return blocked;
+        }
+
         return RedirectToActionPermanent(nameof(Customer), new { tableCode = normalizedTableCode });
     }
 
-    [Authorize(Roles = "Staff,Admin")]
+    [Authorize(AuthenticationSchemes = StaffOrAdminAuthSchemes, Roles = StaffOrAdminRoles)]
     public async Task<IActionResult> Staff(CancellationToken cancellationToken)
     {
         var model = await _tableOrderService.GetStaffDashboardAsync(cancellationToken);
@@ -77,7 +91,7 @@ public class HomeController : Controller
         return View(model);
     }
 
-    [Authorize(Roles = "Staff,Admin")]
+    [Authorize(AuthenticationSchemes = StaffOrAdminAuthSchemes, Roles = StaffOrAdminRoles)]
     public async Task<IActionResult> Restaurant(CancellationToken cancellationToken)
     {
         var model = await _tableOrderService.GetRestaurantDashboardAsync(cancellationToken);
@@ -86,12 +100,17 @@ public class HomeController : Controller
         return View(model);
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(AuthenticationSchemes = AdminAuthScheme, Roles = "Admin")]
     public async Task<IActionResult> Admin(int? editItemId, CancellationToken cancellationToken)
     {
+        if (IsPortalRole("Staff"))
+        {
+            return RedirectToAction("AccessDenied", "Account");
+        }
+
         var model = await _menuAdminService.GetAdminMenuPageAsync(editItemId, cancellationToken);
         model.Operations = await _tableOrderService.GetAdminDashboardAsync(cancellationToken);
-        PopulateAdminQrCodes(model);
+        await PopulateAdminQrCodesAsync(model, cancellationToken);
         model.StatusMessage = TempData["AdminStatusMessage"] as string;
         model.ErrorMessage ??= TempData["AdminErrorMessage"] as string;
         return View(model);
@@ -106,6 +125,11 @@ public class HomeController : Controller
         if (tableAccess.Redirect is not null)
         {
             return tableAccess.Redirect;
+        }
+
+        if (await EnsureCustomerTableAvailableAsync(tableAccess.TableCode, cancellationToken) is { } blocked)
+        {
+            return blocked;
         }
 
         var normalizedTableCode = tableAccess.TableCode;
@@ -141,6 +165,11 @@ public class HomeController : Controller
             return tableAccess.Redirect;
         }
 
+        if (await EnsureCustomerTableAvailableAsync(tableAccess.TableCode, cancellationToken) is { } blocked)
+        {
+            return blocked;
+        }
+
         var normalizedTableCode = tableAccess.TableCode;
         model.TableCode = normalizedTableCode;
         var result = await _tableOrderService.RemoveItemAsync(model, cancellationToken);
@@ -164,6 +193,11 @@ public class HomeController : Controller
         if (tableAccess.Redirect is not null)
         {
             return tableAccess.Redirect;
+        }
+
+        if (await EnsureCustomerTableAvailableAsync(tableAccess.TableCode, cancellationToken) is { } blocked)
+        {
+            return blocked;
         }
 
         var normalizedTableCode = tableAccess.TableCode;
@@ -190,14 +224,55 @@ public class HomeController : Controller
             return tableAccess.Redirect;
         }
 
+        if (await EnsureCustomerTableAvailableAsync(tableAccess.TableCode, cancellationToken, IsAjaxRequest()) is { } blocked)
+        {
+            return blocked;
+        }
+
         var normalizedTableCode = tableAccess.TableCode;
         model.TableCode = normalizedTableCode;
         var result = await _tableOrderService.SendCustomerMessageAsync(model, cancellationToken);
+        if (IsAjaxRequest())
+        {
+            return Json(new
+            {
+                succeeded = result.Succeeded,
+                errorMessage = result.ErrorMessage,
+                messages = result.Succeeded
+                    ? await _tableOrderService.GetCustomerChatMessagesAsync(normalizedTableCode, cancellationToken)
+                    : Array.Empty<ChatMessageViewModel>().AsEnumerable()
+            });
+        }
+
         TempData[result.Succeeded ? "CustomerStatusMessage" : "CustomerErrorMessage"] = result.Succeeded
             ? "Đã gửi tin nhắn cho nhân viên."
             : result.ErrorMessage ?? "Không gửi được tin nhắn.";
 
         return RedirectToAction(nameof(Customer), new { tableCode = normalizedTableCode });
+    }
+
+    [HttpGet]
+    [AllowAnonymous]
+    public async Task<IActionResult> CustomerChatMessages(string tableCode, CancellationToken cancellationToken)
+    {
+        var tableAccess = ResolveCustomerTableAccess(tableCode);
+        if (tableAccess.Redirect is not null)
+        {
+            return Unauthorized(new { messages = Array.Empty<ChatMessageViewModel>() });
+        }
+
+        if (await EnsureCustomerTableAvailableAsync(tableAccess.TableCode, cancellationToken, ajax: true) is { } blocked)
+        {
+            return blocked;
+        }
+
+        var messages = await _tableOrderService.GetCustomerChatMessagesAsync(tableAccess.TableCode, cancellationToken);
+        return Json(new
+        {
+            tableCode = tableAccess.TableCode,
+            count = messages.Count,
+            messages
+        });
     }
 
     [HttpPost]
@@ -209,6 +284,11 @@ public class HomeController : Controller
         if (tableAccess.Redirect is not null)
         {
             return tableAccess.Redirect;
+        }
+
+        if (await EnsureCustomerTableAvailableAsync(tableAccess.TableCode, cancellationToken) is { } blocked)
+        {
+            return blocked;
         }
 
         var normalizedTableCode = tableAccess.TableCode;
@@ -226,7 +306,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    [Authorize(Roles = "Staff,Admin")]
+    [Authorize(AuthenticationSchemes = StaffOrAdminAuthSchemes, Roles = StaffOrAdminRoles)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CheckoutTable(RestaurantCheckoutInputModel model, CancellationToken cancellationToken)
     {
@@ -236,11 +316,35 @@ public class HomeController : Controller
         if (!result.Succeeded)
         {
             TempData["RestaurantErrorMessage"] = result.ErrorMessage ?? "Không thanh toán được cho bàn này.";
-            return RedirectToAction(nameof(Restaurant));
+            return RedirectToAction(nameof(Restaurant), CurrentPortalRoute());
         }
 
         TempData["RestaurantStatusMessage"] = $"Đã thanh toán xong cho bàn {normalizedTableCode}.";
-        return RedirectToAction(nameof(Restaurant));
+        return RedirectToAction(nameof(Restaurant), CurrentPortalRoute());
+    }
+
+    [HttpPost]
+    [Authorize(AuthenticationSchemes = StaffOrAdminAuthSchemes, Roles = StaffOrAdminRoles)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TransferTable(RestaurantTransferTableInputModel model, CancellationToken cancellationToken)
+    {
+        var result = await _tableOrderService.TransferTableAsync(model, cancellationToken);
+        TempData[result.Succeeded ? "RestaurantStatusMessage" : "RestaurantErrorMessage"] = result.Succeeded
+            ? $"Đã chuyển toàn bộ bàn {model.FromTableCode} sang bàn {model.ToTableCode}."
+            : result.ErrorMessage ?? "Không chuyển được bàn.";
+        return RedirectToAction(nameof(Restaurant), CurrentPortalRoute());
+    }
+
+    [HttpPost]
+    [Authorize(AuthenticationSchemes = StaffOrAdminAuthSchemes, Roles = StaffOrAdminRoles)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SplitItemToTable(RestaurantSplitItemInputModel model, CancellationToken cancellationToken)
+    {
+        var result = await _tableOrderService.SplitItemToTableAsync(model, cancellationToken);
+        TempData[result.Succeeded ? "RestaurantStatusMessage" : "RestaurantErrorMessage"] = result.Succeeded
+            ? $"Đã tách món từ bàn {model.FromTableCode} sang bàn {model.ToTableCode}."
+            : result.ErrorMessage ?? "Không tách được món.";
+        return RedirectToAction(nameof(Restaurant), CurrentPortalRoute());
     }
 
     [HttpPost]
@@ -252,6 +356,11 @@ public class HomeController : Controller
         if (tableAccess.Redirect is not null)
         {
             return tableAccess.Redirect;
+        }
+
+        if (await EnsureCustomerTableAvailableAsync(tableAccess.TableCode, cancellationToken) is { } blocked)
+        {
+            return blocked;
         }
 
         var normalizedTableCode = tableAccess.TableCode;
@@ -268,7 +377,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    [Authorize(Roles = "Staff,Admin")]
+    [Authorize(AuthenticationSchemes = StaffOrAdminAuthSchemes, Roles = StaffOrAdminRoles)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateOrderStatus(StaffOrderStatusInputModel model, CancellationToken cancellationToken)
     {
@@ -280,19 +389,43 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    [Authorize(Roles = "Staff,Admin")]
+    [Authorize(AuthenticationSchemes = StaffOrAdminAuthSchemes, Roles = StaffOrAdminRoles)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SendStaffMessage(StaffChatInputModel model, CancellationToken cancellationToken)
     {
         var result = await _tableOrderService.SendStaffMessageAsync(model, cancellationToken);
+        if (IsAjaxRequest())
+        {
+            var threads = await _tableOrderService.GetStaffChatThreadsAsync(cancellationToken);
+            return Json(new
+            {
+                succeeded = result.Succeeded,
+                errorMessage = result.ErrorMessage,
+                pendingCount = threads.Sum(x => x.PendingCount),
+                threads
+            });
+        }
+
         TempData[result.Succeeded ? "StaffStatusMessage" : "StaffErrorMessage"] = result.Succeeded
             ? $"Đã gửi phản hồi cho bàn {model.TableCode}."
             : result.ErrorMessage ?? "Không gửi được phản hồi.";
         return RedirectToAction(nameof(Staff));
     }
 
+    [HttpGet]
+    [Authorize(AuthenticationSchemes = StaffOrAdminAuthSchemes, Roles = StaffOrAdminRoles)]
+    public async Task<IActionResult> StaffChatThreads(CancellationToken cancellationToken)
+    {
+        var threads = await _tableOrderService.GetStaffChatThreadsAsync(cancellationToken);
+        return Json(new
+        {
+            pendingCount = threads.Sum(x => x.PendingCount),
+            threads
+        });
+    }
+
     [HttpPost]
-    [Authorize(Roles = "Staff,Admin")]
+    [Authorize(AuthenticationSchemes = StaffOrAdminAuthSchemes, Roles = StaffOrAdminRoles)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteTableChat(string tableCode, CancellationToken cancellationToken)
     {
@@ -305,7 +438,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    [Authorize(Roles = "Staff,Admin")]
+    [Authorize(AuthenticationSchemes = StaffOrAdminAuthSchemes, Roles = StaffOrAdminRoles)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateTableState(StaffTableStateInputModel model, CancellationToken cancellationToken)
     {
@@ -317,7 +450,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(AuthenticationSchemes = AdminAuthScheme, Roles = "Admin")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CloseShift(CancellationToken cancellationToken)
     {
@@ -331,7 +464,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(AuthenticationSchemes = AdminAuthScheme, Roles = "Admin")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CloseDay(CancellationToken cancellationToken)
     {
@@ -345,7 +478,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(AuthenticationSchemes = AdminAuthScheme, Roles = "Admin")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveCategory(CancellationToken cancellationToken)
     {
@@ -357,7 +490,7 @@ public class HomeController : Controller
         {
             var model = await _menuAdminService.GetAdminMenuPageAsync(null, cancellationToken);
             model.Operations = await _tableOrderService.GetAdminDashboardAsync(cancellationToken);
-            PopulateAdminQrCodes(model);
+            await PopulateAdminQrCodesAsync(model, cancellationToken);
             model.CategoryForm = form;
             model.ErrorMessage = string.Join(" ", ModelState.Values
                 .SelectMany(x => x.Errors)
@@ -372,7 +505,7 @@ public class HomeController : Controller
         {
             var model = await _menuAdminService.GetAdminMenuPageAsync(null, cancellationToken);
             model.Operations = await _tableOrderService.GetAdminDashboardAsync(cancellationToken);
-            PopulateAdminQrCodes(model);
+            await PopulateAdminQrCodesAsync(model, cancellationToken);
             model.CategoryForm = form;
             model.ErrorMessage = $"Không lưu được danh mục. {result.ErrorMessage}".Trim();
             return View("Admin", model);
@@ -383,7 +516,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(AuthenticationSchemes = AdminAuthScheme, Roles = "Admin")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveMenuItem(CancellationToken cancellationToken)
     {
@@ -392,7 +525,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(AuthenticationSchemes = AdminAuthScheme, Roles = "Admin")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateMenuItem(CancellationToken cancellationToken)
     {
@@ -415,7 +548,7 @@ public class HomeController : Controller
         {
             var model = await _menuAdminService.GetAdminMenuPageAsync(form.ItemId, cancellationToken);
             model.Operations = await _tableOrderService.GetAdminDashboardAsync(cancellationToken);
-            PopulateAdminQrCodes(model);
+            await PopulateAdminQrCodesAsync(model, cancellationToken);
             model.Form = form;
             model.ErrorMessage = string.Join(" ", ModelState.Values
                 .SelectMany(x => x.Errors)
@@ -430,7 +563,7 @@ public class HomeController : Controller
         {
             var model = await _menuAdminService.GetAdminMenuPageAsync(form.ItemId, cancellationToken);
             model.Operations = await _tableOrderService.GetAdminDashboardAsync(cancellationToken);
-            PopulateAdminQrCodes(model);
+            await PopulateAdminQrCodesAsync(model, cancellationToken);
             model.Form = form;
             model.ErrorMessage = imageResult.ErrorMessage;
             return View("Admin", model);
@@ -441,7 +574,7 @@ public class HomeController : Controller
         {
             var model = await _menuAdminService.GetAdminMenuPageAsync(form.ItemId, cancellationToken);
             model.Operations = await _tableOrderService.GetAdminDashboardAsync(cancellationToken);
-            PopulateAdminQrCodes(model);
+            await PopulateAdminQrCodesAsync(model, cancellationToken);
             model.Form = form;
             model.ErrorMessage = "Link ảnh phải là link trực tiếp đến file ảnh JPG, PNG, WEBP hoặc đường dẫn /images/...";
             return View("Admin", model);
@@ -454,7 +587,7 @@ public class HomeController : Controller
         {
             var model = await _menuAdminService.GetAdminMenuPageAsync(form.ItemId, cancellationToken);
             model.Operations = await _tableOrderService.GetAdminDashboardAsync(cancellationToken);
-            PopulateAdminQrCodes(model);
+            await PopulateAdminQrCodesAsync(model, cancellationToken);
             model.Form = form;
             model.ErrorMessage = $"Không lưu được món ăn. {result.ErrorMessage}".Trim();
             return View("Admin", model);
@@ -520,7 +653,7 @@ public class HomeController : Controller
         => values.Any(x => string.Equals(x, "true", StringComparison.OrdinalIgnoreCase) || string.Equals(x, "on", StringComparison.OrdinalIgnoreCase));
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(AuthenticationSchemes = AdminAuthScheme, Roles = "Admin")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteMenuItem(int itemId, CancellationToken cancellationToken)
     {
@@ -608,7 +741,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(AuthenticationSchemes = AdminAuthScheme, Roles = "Admin")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveGalleryImage(AdminGalleryImageInputModel model, CancellationToken cancellationToken)
     {
@@ -711,6 +844,37 @@ public class HomeController : Controller
         });
     }
 
+    private async Task<IActionResult?> EnsureCustomerTableAvailableAsync(string tableCode, CancellationToken cancellationToken, bool ajax = false)
+    {
+        if (User.IsInRole("Staff") || User.IsInRole("Admin"))
+        {
+            return null;
+        }
+
+        var availability = await _tableOrderService.GetCustomerTableAvailabilityAsync(tableCode, cancellationToken);
+        if (availability.IsAvailable)
+        {
+            return null;
+        }
+
+        Response.Cookies.Delete(CustomerTableCookieName);
+        var message = $"Bàn {tableCode} hiện đang ở trạng thái \"{availability.StateLabel}\" nên tạm ngưng nhận khách. Vui lòng chọn bàn khác hoặc báo nhân viên.";
+        if (ajax)
+        {
+            return Json(new
+            {
+                succeeded = false,
+                errorMessage = message,
+                tableCode,
+                count = 0,
+                messages = Array.Empty<ChatMessageViewModel>()
+            });
+        }
+
+        TempData["CustomerErrorMessage"] = message;
+        return RedirectToAction(nameof(Index));
+    }
+
     private string? TryNormalizeTableCode(string? tableCode)
     {
         var normalized = (tableCode ?? string.Empty).Trim().ToUpperInvariant();
@@ -719,24 +883,28 @@ public class HomeController : Controller
             : null;
     }
 
-    private void PopulateAdminQrCodes(AdminMenuPageViewModel model)
+    private async Task PopulateAdminQrCodesAsync(AdminMenuPageViewModel model, CancellationToken cancellationToken)
     {
-        model.TableQrs = _tableOrderService.GetTableCodes()
-            .Select(tableCode =>
-            {
-                var menuUrl = BuildCustomerUrl(tableCode);
-                var shortUrl = BuildShortCustomerUrl(tableCode);
-                var qrImageUrl = $"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(shortUrl)}";
+        var tableQrs = new List<TableQrViewModel>();
+        foreach (var tableCode in _tableOrderService.GetTableCodes())
+        {
+            var availability = await _tableOrderService.GetCustomerTableAvailabilityAsync(tableCode, cancellationToken);
+            var menuUrl = BuildCustomerUrl(tableCode);
+            var shortUrl = BuildShortCustomerUrl(tableCode);
+            var qrImageUrl = $"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(shortUrl)}";
 
-                return new TableQrViewModel
-                {
-                    TableCode = tableCode,
-                    MenuUrl = menuUrl,
-                    ShortUrl = shortUrl,
-                    QrImageUrl = qrImageUrl
-                };
-            })
-            .ToList();
+            tableQrs.Add(new TableQrViewModel
+            {
+                TableCode = tableCode,
+                MenuUrl = menuUrl,
+                ShortUrl = shortUrl,
+                QrImageUrl = qrImageUrl,
+                StateLabel = availability.StateLabel,
+                BlocksCustomerAccess = !availability.IsAvailable
+            });
+        }
+
+        model.TableQrs = tableQrs;
     }
 
     private string BuildCustomerUrl(string tableCode)
@@ -805,5 +973,17 @@ public class HomeController : Controller
             .ThenByDescending(d => d.PopularityScore)
             .Take(4)
             .ToList();
+    }
+
+    private bool IsAjaxRequest()
+        => string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsPortalRole(string role)
+        => string.Equals(Request.Query["portal"].FirstOrDefault(), role, StringComparison.OrdinalIgnoreCase);
+
+    private object? CurrentPortalRoute()
+    {
+        var portal = Request.Query["portal"].FirstOrDefault();
+        return string.IsNullOrWhiteSpace(portal) ? null : new { portal };
     }
 }

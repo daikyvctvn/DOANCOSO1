@@ -10,22 +10,227 @@
         return;
     }
 
-    if (liveContainer.classList.contains("customer-page")) {
-        return;
-    }
-
-    window.setInterval(() => {
+    const isInteractionBusy = () => {
         if (document.body.classList.contains("modal-open") || document.querySelector("[data-checkout-modal]:not([hidden])")) {
-            return;
+            return true;
         }
 
         const activeElement = document.activeElement;
         if (activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(activeElement.tagName)) {
+            return true;
+        }
+
+        return false;
+    };
+
+    const copyAttributes = (target, source) => {
+        for (const attr of target.getAttributeNames()) {
+            target.removeAttribute(attr);
+        }
+
+        for (const attr of source.getAttributeNames()) {
+            target.setAttribute(attr, source.getAttribute(attr) || "");
+        }
+    };
+
+    const replaceElement = (container, nextContainer, selector) => {
+        const current = container.querySelector(selector);
+        const next = nextContainer.querySelector(selector);
+        if (current instanceof HTMLElement && next instanceof HTMLElement) {
+            current.replaceWith(next);
+        }
+    };
+
+    const syncFeaturePanels = () => {
+        if (typeof window.__applyFeatureTarget === "function") {
+            window.__applyFeatureTarget(window.location.hash.replace(/^#/, "").trim());
+        }
+    };
+
+    const getRestaurantSignature = (container) => {
+        const cards = Array.from(container.querySelectorAll("[data-table-card]"))
+            .map((card) => {
+                if (!(card instanceof HTMLElement)) {
+                    return "";
+                }
+
+                return [
+                    card.dataset.tableCode || "",
+                    card.dataset.tableState || "",
+                    card.dataset.tableTotalRaw || "",
+                    card.dataset.hasActiveOrder || ""
+                ].join(":");
+            })
+            .join("|");
+
+        const details = Array.from(container.querySelectorAll("[data-table-details]"))
+            .map((detail) => {
+                if (!(detail instanceof HTMLElement)) {
+                    return "";
+                }
+
+                return `${detail.getAttribute("data-table-details") || ""}:${detail.textContent?.replace(/\s+/g, " ").trim() || ""}`;
+            })
+            .join("|");
+
+        return `${cards}::${details}`;
+    };
+
+    const getCustomerSignature = (container) => {
+        const side = container.querySelector(".customer-side");
+        const fab = container.querySelector(".customer-cart-fab");
+        return [
+            fab instanceof HTMLElement ? fab.textContent?.replace(/\s+/g, " ").trim() || "" : "",
+            side instanceof HTMLElement ? side.textContent?.replace(/\s+/g, " ").trim() || "" : ""
+        ].join("::");
+    };
+
+    const refreshLivePage = async () => {
+        if (isInteractionBusy()) {
             return;
         }
 
-        window.location.replace(refreshUrl);
-    }, seconds * 1000);
+        const response = await fetch(refreshUrl, {
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
+
+        if (!response.ok) {
+            return;
+        }
+
+        const html = await response.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const nextContainer = doc.querySelector("[data-live-page]");
+        if (!(nextContainer instanceof HTMLElement)) {
+            return;
+        }
+
+        copyAttributes(liveContainer, nextContainer);
+
+        const pageName = liveContainer.getAttribute("data-live-page") || "";
+        if (pageName === "customer") {
+            if (getCustomerSignature(liveContainer) !== getCustomerSignature(nextContainer)) {
+                [
+                    ".customer-cart-fab",
+                    ".customer-side"
+                ].forEach((selector) => replaceElement(liveContainer, nextContainer, selector));
+            }
+
+            return;
+        }
+
+        if (pageName === "restaurant") {
+            if (getRestaurantSignature(liveContainer) !== getRestaurantSignature(nextContainer)) {
+                window.location.reload();
+            }
+
+            return;
+        }
+
+        if (pageName === "staff") {
+            [
+                ".staff-metrics",
+                "[data-feature-panel='orders']",
+                "[data-feature-panel='kitchen']",
+                "[data-feature-panel='payments']",
+                "[data-feature-panel='tables']"
+            ].forEach((selector) => replaceElement(liveContainer, nextContainer, selector));
+
+            syncFeaturePanels();
+        }
+    };
+
+    if (liveContainer.hasAttribute("data-live-page")) {
+        const intervalMs = Number.parseInt(liveContainer.getAttribute("data-live-refresh-ms") || `${seconds * 1000}`, 10);
+        if (!Number.isNaN(intervalMs) && intervalMs >= 1000) {
+            window.setInterval(() => refreshLivePage().catch(() => {}), intervalMs);
+        }
+
+        return;
+    }
+
+    // Non-live pages should not force a full reload. Live pages handle their
+    // own background refresh above.
+})();
+
+(function () {
+    const workspaces = Array.from(document.querySelectorAll("[data-feature-workspace]"));
+    if (workspaces.length === 0) {
+        return;
+    }
+
+    const escapeSelectorValue = (value) => window.CSS && typeof window.CSS.escape === "function"
+        ? window.CSS.escape(value)
+        : value.replace(/["\\]/g, "\\$&");
+
+    const getCurrentTarget = (workspace) => {
+        const hashTarget = window.location.hash.replace(/^#/, "").trim();
+        if (hashTarget && workspace.querySelector(`[data-feature-panel="${escapeSelectorValue(hashTarget)}"]`)) {
+            return hashTarget;
+        }
+
+        return workspace.getAttribute("data-feature-default") || "";
+    };
+
+    const applyTarget = (target) => {
+        for (const workspace of workspaces) {
+            if (!(workspace instanceof HTMLElement)) {
+                continue;
+            }
+
+            const resolvedTarget = target && workspace.querySelector(`[data-feature-panel="${escapeSelectorValue(target)}"]`)
+                ? target
+                : getCurrentTarget(workspace);
+
+            workspace.querySelectorAll("[data-feature-panel]").forEach((panel) => {
+                if (panel instanceof HTMLElement) {
+                    panel.hidden = panel.getAttribute("data-feature-panel") !== resolvedTarget;
+                }
+            });
+
+            const nav = workspace.previousElementSibling;
+            if (nav instanceof HTMLElement && nav.hasAttribute("data-feature-nav")) {
+                nav.querySelectorAll("[data-feature-target]").forEach((button) => {
+                    if (!(button instanceof HTMLButtonElement)) {
+                        return;
+                    }
+
+                    const isActive = button.getAttribute("data-feature-target") === resolvedTarget;
+                    button.classList.toggle("is-active", isActive);
+                    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+                });
+            }
+        }
+    };
+
+    document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const button = target.closest("[data-feature-target]");
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const featureTarget = button.getAttribute("data-feature-target") || "";
+        if (!featureTarget) {
+            return;
+        }
+
+        event.preventDefault();
+        window.location.hash = featureTarget;
+        applyTarget(featureTarget);
+    });
+
+    window.addEventListener("hashchange", () => {
+        applyTarget(window.location.hash.replace(/^#/, "").trim());
+    });
+
+    window.__applyFeatureTarget = applyTarget;
+    applyTarget(window.location.hash.replace(/^#/, "").trim());
 })();
 
 (function () {
@@ -89,6 +294,311 @@
             }
         }
     });
+})();
+
+(function () {
+    const chatPollMs = 2000;
+
+    const createMessageBubble = (message, viewerRole) => {
+        const senderRole = (message.senderRole || "").toLowerCase();
+        const viewer = (viewerRole || "").toLowerCase();
+        const side = senderRole === viewer ? "mine" : "theirs";
+        const bubble = document.createElement("div");
+        bubble.className = `chat-bubble chat-bubble--${message.direction || "system"} chat-message chat-message--${side}`;
+        if (message.messageId) {
+            bubble.dataset.messageId = message.messageId;
+        }
+
+        if (side === "theirs") {
+            const name = document.createElement("strong");
+            name.className = "chat-message__name";
+            name.textContent = message.senderName || "Tin nhan";
+            bubble.appendChild(name);
+        }
+
+        const body = document.createElement("p");
+        body.textContent = message.message || "";
+        bubble.appendChild(body);
+
+        const time = document.createElement("small");
+        time.className = "chat-message__time";
+        time.textContent = message.timeLabel || "";
+        bubble.appendChild(time);
+
+        return bubble;
+    };
+
+    const renderEmpty = (container, title, subtitle) => {
+        container.innerHTML = "";
+        const empty = document.createElement("div");
+        empty.className = "chat-empty staff-empty-state";
+        const strong = document.createElement("strong");
+        strong.textContent = title;
+        const span = document.createElement("span");
+        span.textContent = subtitle;
+        empty.append(strong, span);
+        container.appendChild(empty);
+    };
+
+    const scrollChatToBottom = (container) => {
+        container.scrollTop = container.scrollHeight;
+    };
+
+    const renderMessages = (thread, messages, viewerRole) => {
+        if (!(thread instanceof HTMLElement)) {
+            return;
+        }
+
+        const previousLast = thread.querySelector(".chat-message:last-child")?.getAttribute("data-message-id") || "";
+        const shouldStickToBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
+        thread.innerHTML = "";
+
+        if (!Array.isArray(messages) || messages.length === 0) {
+            renderEmpty(thread, "Chua co tin nhan.", "Tin moi se hien o day ngay khi co nguoi gui.");
+            return;
+        }
+
+        for (const message of messages) {
+            thread.appendChild(createMessageBubble(message, viewerRole));
+        }
+
+        const nextLast = messages[messages.length - 1]?.messageId || "";
+        if (shouldStickToBottom || previousLast !== nextLast) {
+            scrollChatToBottom(thread);
+        }
+    };
+
+    const fetchJson = async (url, options) => {
+        const response = await fetch(url, {
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            ...options
+        });
+
+        if (!response.ok) {
+            throw new Error(`Request failed: ${response.status}`);
+        }
+
+        return response.json();
+    };
+
+    const refreshCustomerChat = async () => {
+        const panel = document.querySelector("[data-chat-panel='customer']");
+        if (!(panel instanceof HTMLElement)) {
+            return;
+        }
+
+        const url = panel.dataset.chatUrl || "";
+        const thread = panel.querySelector("[data-chat-thread]");
+        const count = panel.querySelector("[data-chat-count]");
+        if (!url || !(thread instanceof HTMLElement)) {
+            return;
+        }
+
+        const data = await fetchJson(url);
+        renderMessages(thread, data.messages || [], "customer");
+        if (count instanceof HTMLElement) {
+            count.textContent = `${data.count || 0} tin`;
+        }
+    };
+
+    const getAntiForgeryToken = () => {
+        const token = document.querySelector("input[name='__RequestVerificationToken']");
+        return token instanceof HTMLInputElement ? token.value : "";
+    };
+
+    const createHiddenInput = (name, value) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = value;
+        return input;
+    };
+
+    const renderStaffThreads = (threads, pendingCount) => {
+        const list = document.querySelector("[data-staff-chat-list]");
+        const pending = document.querySelector("[data-staff-chat-pending]");
+        if (!(list instanceof HTMLElement)) {
+            return;
+        }
+
+        if (pending instanceof HTMLElement) {
+            pending.textContent = `${pendingCount || 0} tin cho`;
+        }
+
+        const openTables = new Set(
+            Array.from(list.querySelectorAll("[data-staff-chat-thread][open]"))
+                .map((item) => item instanceof HTMLElement ? item.dataset.tableCode || "" : "")
+                .filter(Boolean)
+        );
+        const token = getAntiForgeryToken();
+        list.innerHTML = "";
+
+        if (!Array.isArray(threads) || threads.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "staff-empty-state";
+            const strong = document.createElement("strong");
+            strong.textContent = "Chua co tin nhan";
+            empty.appendChild(strong);
+            list.appendChild(empty);
+            return;
+        }
+
+        for (const thread of threads) {
+            const tableCode = thread.tableCode || "";
+            const details = document.createElement("details");
+            details.className = "staff-chat-card staff-chat-card--collapsible";
+            details.dataset.staffChatThread = "";
+            details.dataset.tableCode = tableCode;
+            details.open = (thread.pendingCount || 0) > 0 || openTables.has(tableCode);
+
+            const summary = document.createElement("summary");
+            summary.className = "staff-chat-summary";
+
+            const title = document.createElement("strong");
+            title.textContent = `Ban ${tableCode}`;
+
+            const badge = document.createElement("span");
+            badge.className = (thread.pendingCount || 0) > 0
+                ? "status-badge staff-unread-badge"
+                : "status-badge muted";
+            badge.textContent = (thread.pendingCount || 0) > 0 ? "Co tin nhan chua doc" : "Da doc";
+
+            const last = document.createElement("small");
+            last.dataset.staffChatLast = "";
+            last.textContent = thread.lastMessageLabel || "";
+
+            const deleteForm = document.createElement("form");
+            deleteForm.className = "staff-chat-delete-form";
+            deleteForm.method = "post";
+            deleteForm.action = "/Home/DeleteTableChat";
+            deleteForm.addEventListener("click", (event) => event.stopPropagation());
+            if (token) {
+                deleteForm.appendChild(createHiddenInput("__RequestVerificationToken", token));
+            }
+            deleteForm.appendChild(createHiddenInput("tableCode", tableCode));
+            const deleteButton = document.createElement("button");
+            deleteButton.className = "btn btn-ghost btn-small";
+            deleteButton.type = "submit";
+            deleteButton.textContent = "Xoa";
+            deleteButton.addEventListener("click", (event) => {
+                if (!window.confirm(`Xoa hoi thoai ban ${tableCode}?`)) {
+                    event.preventDefault();
+                }
+            });
+            deleteForm.appendChild(deleteButton);
+
+            summary.append(title, badge, last, deleteForm);
+
+            const body = document.createElement("div");
+            body.className = "staff-chat-card__body";
+            const messages = document.createElement("div");
+            messages.className = "chat-thread compact-stack";
+            messages.dataset.chatThread = "";
+            renderMessages(messages, thread.messages || [], "staff");
+
+            const replyForm = document.createElement("form");
+            replyForm.className = "staff-reply-form";
+            replyForm.method = "post";
+            replyForm.action = "/Home/SendStaffMessage";
+            replyForm.dataset.chatForm = "";
+            if (token) {
+                replyForm.appendChild(createHiddenInput("__RequestVerificationToken", token));
+            }
+            replyForm.appendChild(createHiddenInput("TableCode", tableCode));
+            const input = document.createElement("input");
+            input.name = "Message";
+            input.placeholder = "Nhap phan hoi nhanh...";
+            const send = document.createElement("button");
+            send.className = "btn btn-accent btn-small";
+            send.type = "submit";
+            send.textContent = "Gui";
+            replyForm.append(input, send);
+
+            body.append(messages, replyForm);
+            details.append(summary, body);
+            list.appendChild(details);
+        }
+    };
+
+    const refreshStaffChat = async () => {
+        const page = document.querySelector("[data-staff-chat-url]");
+        if (!(page instanceof HTMLElement) || !page.dataset.staffChatUrl) {
+            return;
+        }
+
+        const activeElement = document.activeElement;
+        if (activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(activeElement.tagName)) {
+            return;
+        }
+
+        const data = await fetchJson(page.dataset.staffChatUrl);
+        renderStaffThreads(data.threads || [], data.pendingCount || 0);
+    };
+
+    document.addEventListener("submit", async (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-chat-form")) {
+            return;
+        }
+
+        event.preventDefault();
+        const input = form.querySelector("input[name='Message']");
+        const button = form.querySelector("button[type='submit']");
+        if (!(input instanceof HTMLInputElement) || input.value.trim().length === 0) {
+            return;
+        }
+
+        const originalText = button instanceof HTMLButtonElement ? button.textContent || "" : "";
+        if (button instanceof HTMLButtonElement) {
+            button.disabled = true;
+            button.textContent = "...";
+        }
+
+        try {
+            const data = await fetchJson(form.action, {
+                method: "POST",
+                body: new FormData(form)
+            });
+
+            if (data.succeeded === false) {
+                window.alert(data.errorMessage || "Không gửi được tin nhắn.");
+                return;
+            }
+
+            input.value = "";
+            if (form.classList.contains("customer-chat-form")) {
+                const panel = form.closest("[data-chat-panel='customer']");
+                const thread = panel?.querySelector("[data-chat-thread]");
+                const count = panel?.querySelector("[data-chat-count]");
+                if (thread instanceof HTMLElement) {
+                    renderMessages(thread, data.messages || [], "customer");
+                }
+                if (count instanceof HTMLElement) {
+                    count.textContent = `${(data.messages || []).length} tin`;
+                }
+            } else {
+                renderStaffThreads(data.threads || [], data.pendingCount || 0);
+            }
+        } catch (_error) {
+            window.location.reload();
+        } finally {
+            if (button instanceof HTMLButtonElement) {
+                button.disabled = false;
+                button.textContent = originalText || "Gui";
+            }
+        }
+    });
+
+    if (document.querySelector("[data-chat-panel='customer']")) {
+        refreshCustomerChat().catch(() => {});
+        window.setInterval(() => refreshCustomerChat().catch(() => {}), chatPollMs);
+    }
+
+    if (document.querySelector("[data-staff-chat-url]")) {
+        refreshStaffChat().catch(() => {});
+        window.setInterval(() => refreshStaffChat().catch(() => {}), chatPollMs);
+    }
 })();
 
 (function () {
@@ -275,6 +785,8 @@
     const selectedTableItems = board.querySelector("[data-selected-table-items]");
     const addDishLink = actionBar.querySelector("[data-add-dish-link]");
     const paymentButton = actionBar.querySelector("[data-payment-button]");
+    const transferButton = actionBar.querySelector("[data-transfer-button]");
+    const splitButton = actionBar.querySelector("[data-split-button]");
     const checkoutTableName = checkoutModal.querySelector("[data-checkout-table-name]");
     const checkoutTableState = checkoutModal.querySelector("[data-checkout-table-state]");
     const checkoutTotal = checkoutModal.querySelector("[data-checkout-total]");
@@ -288,6 +800,18 @@
     const changeDisplay = checkoutModal.querySelector("[data-change-display]");
     const checkoutSubmit = checkoutModal.querySelector("[data-checkout-submit]");
     const closeButtons = Array.from(checkoutModal.querySelectorAll("[data-checkout-close]"));
+    const transferModal = document.querySelector("[data-transfer-modal]");
+    const splitModal = document.querySelector("[data-split-modal]");
+    const transferCloseButtons = transferModal instanceof HTMLElement ? Array.from(transferModal.querySelectorAll("[data-transfer-close]")) : [];
+    const splitCloseButtons = splitModal instanceof HTMLElement ? Array.from(splitModal.querySelectorAll("[data-split-close]")) : [];
+    const transferFromTable = transferModal instanceof HTMLElement ? transferModal.querySelector("[data-transfer-from-table]") : null;
+    const transferToTable = transferModal instanceof HTMLElement ? transferModal.querySelector("[data-transfer-to-table]") : null;
+    const transferTableName = transferModal instanceof HTMLElement ? transferModal.querySelector("[data-transfer-table-name]") : null;
+    const splitFromTable = splitModal instanceof HTMLElement ? splitModal.querySelector("[data-split-from-table]") : null;
+    const splitToTable = splitModal instanceof HTMLElement ? splitModal.querySelector("[data-split-to-table]") : null;
+    const splitTableName = splitModal instanceof HTMLElement ? splitModal.querySelector("[data-split-table-name]") : null;
+    const splitItems = splitModal instanceof HTMLElement ? splitModal.querySelector("[data-split-items]") : null;
+    const splitQuantity = splitModal instanceof HTMLElement ? splitModal.querySelector("[data-split-quantity]") : null;
     if (cards.length === 0 ||
         selectedTableNames.length === 0 ||
         selectedTableStates.length === 0 ||
@@ -299,6 +823,8 @@
         !(addDishLink instanceof HTMLAnchorElement) ||
         !(paymentTableCode instanceof HTMLInputElement) ||
         !(paymentButton instanceof HTMLButtonElement) ||
+        !(transferButton instanceof HTMLButtonElement) ||
+        !(splitButton instanceof HTMLButtonElement) ||
         !(checkoutTableName instanceof HTMLElement) ||
         !(checkoutTableState instanceof HTMLElement) ||
         !(checkoutTotal instanceof HTMLElement) ||
@@ -309,12 +835,24 @@
         !(paidTotalDisplay instanceof HTMLInputElement) ||
         !(balanceLabel instanceof HTMLElement) ||
         !(changeDisplay instanceof HTMLInputElement) ||
-        !(checkoutSubmit instanceof HTMLButtonElement)) {
+        !(checkoutSubmit instanceof HTMLButtonElement) ||
+        !(transferModal instanceof HTMLElement) ||
+        !(splitModal instanceof HTMLElement) ||
+        !(transferFromTable instanceof HTMLInputElement) ||
+        !(transferToTable instanceof HTMLSelectElement) ||
+        !(transferTableName instanceof HTMLElement) ||
+        !(splitFromTable instanceof HTMLInputElement) ||
+        !(splitToTable instanceof HTMLSelectElement) ||
+        !(splitTableName instanceof HTMLElement) ||
+        !(splitItems instanceof HTMLElement) ||
+        !(splitQuantity instanceof HTMLInputElement)) {
         return;
     }
 
     const baseAddDishUrl = addDishLink.getAttribute("href") || "";
     let selectedCard = cards[0];
+    transferButton.textContent = "Chuyển bàn";
+    splitButton.textContent = "Tách món";
 
     const formatCurrency = (value) => `${new Intl.NumberFormat("vi-VN").format(Math.max(0, value))}d`;
     const parseNumber = (value) => {
@@ -424,6 +962,34 @@
         syncPaymentInputs();
     };
 
+    const escapeSelectorValue = (value) => window.CSS && typeof window.CSS.escape === "function"
+        ? window.CSS.escape(value)
+        : value.replace(/["\\]/g, "\\$&");
+
+    const chooseDifferentTable = (select, tableCode) => {
+        const options = Array.from(select.options);
+        const preferred = options.find((option) => option.value !== tableCode);
+        select.value = preferred?.value || tableCode;
+    };
+
+    const renderTransferDetails = (card) => {
+        const tableCode = card.dataset.tableCode || "";
+        transferFromTable.value = tableCode;
+        transferTableName.textContent = card.dataset.tableName || `Ban ${tableCode}`;
+        chooseDifferentTable(transferToTable, tableCode);
+    };
+
+    const renderSplitDetails = (card) => {
+        const tableCode = card.dataset.tableCode || "";
+        splitFromTable.value = tableCode;
+        splitTableName.textContent = card.dataset.tableName || `Ban ${tableCode}`;
+        chooseDifferentTable(splitToTable, tableCode);
+        splitQuantity.value = "1";
+
+        const source = document.querySelector(`[data-table-transfer-items="${escapeSelectorValue(tableCode)}"]`);
+        splitItems.innerHTML = source?.innerHTML || "<div class=\"staff-empty-state\"><strong>Không có món để tách.</strong></div>";
+    };
+
     const openCheckoutModal = () => {
         if (selectedCard?.dataset.hasActiveOrder !== "true") {
             return;
@@ -434,8 +1000,38 @@
         document.body.classList.add("modal-open");
     };
 
+    const openTransferModal = () => {
+        if (selectedCard?.dataset.hasActiveOrder !== "true") {
+            return;
+        }
+
+        renderTransferDetails(selectedCard);
+        transferModal.hidden = false;
+        document.body.classList.add("modal-open");
+    };
+
+    const openSplitModal = () => {
+        if (selectedCard?.dataset.hasActiveOrder !== "true") {
+            return;
+        }
+
+        renderSplitDetails(selectedCard);
+        splitModal.hidden = false;
+        document.body.classList.add("modal-open");
+    };
+
     const closeCheckoutModal = () => {
         checkoutModal.hidden = true;
+        document.body.classList.remove("modal-open");
+    };
+
+    const closeTransferModal = () => {
+        transferModal.hidden = true;
+        document.body.classList.remove("modal-open");
+    };
+
+    const closeSplitModal = () => {
+        splitModal.hidden = true;
         document.body.classList.remove("modal-open");
     };
 
@@ -457,10 +1053,20 @@
         paymentTableCode.value = tableCode;
         addDishLink.href = `${baseAddDishUrl.split("?")[0]}?tableCode=${encodeURIComponent(tableCode)}`;
         paymentButton.disabled = !hasActiveOrder;
+        transferButton.disabled = !hasActiveOrder;
+        splitButton.disabled = !hasActiveOrder;
         paymentButton.textContent = hasActiveOrder ? "Thanh toán" : "Bàn này chưa có order";
 
         if (!checkoutModal.hidden) {
             renderCheckoutDetails(card);
+        }
+
+        if (!transferModal.hidden) {
+            renderTransferDetails(card);
+        }
+
+        if (!splitModal.hidden) {
+            renderSplitDetails(card);
         }
     };
 
@@ -475,6 +1081,8 @@
     }
 
     paymentButton.addEventListener("click", openCheckoutModal);
+    transferButton.addEventListener("click", openTransferModal);
+    splitButton.addEventListener("click", openSplitModal);
     addPaymentRowButton.addEventListener("click", () => {
         const nextIndex = getPaymentRows().length;
         const row = createPaymentRow(nextIndex);
@@ -541,16 +1149,61 @@
         }
     });
     closeButtons.forEach((button) => button.addEventListener("click", closeCheckoutModal));
+    transferCloseButtons.forEach((button) => button.addEventListener("click", closeTransferModal));
+    splitCloseButtons.forEach((button) => button.addEventListener("click", closeSplitModal));
     checkoutModal.addEventListener("click", (event) => {
         if (event.target === checkoutModal) {
             closeCheckoutModal();
+        }
+    });
+    transferModal.addEventListener("click", (event) => {
+        if (event.target === transferModal) {
+            closeTransferModal();
+        }
+    });
+    splitModal.addEventListener("click", (event) => {
+        if (event.target === splitModal) {
+            closeSplitModal();
         }
     });
     document.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && !checkoutModal.hidden) {
             closeCheckoutModal();
         }
+        if (event.key === "Escape" && !transferModal.hidden) {
+            closeTransferModal();
+        }
+        if (event.key === "Escape" && !splitModal.hidden) {
+            closeSplitModal();
+        }
     });
+
+    const transferForm = transferModal.querySelector("form");
+    if (transferForm instanceof HTMLFormElement) {
+        transferForm.addEventListener("submit", (event) => {
+            if (transferFromTable.value === transferToTable.value) {
+                event.preventDefault();
+                window.alert("Hãy chọn bàn nhận khác bàn hiện tại.");
+            }
+        });
+    }
+
+    const splitForm = splitModal.querySelector("form");
+    if (splitForm instanceof HTMLFormElement) {
+        splitForm.addEventListener("submit", (event) => {
+            const selectedLine = splitForm.querySelector("input[name='LineKey']:checked");
+            if (splitFromTable.value === splitToTable.value) {
+                event.preventDefault();
+                window.alert("Hãy chọn bàn nhận khác bàn hiện tại.");
+                return;
+            }
+
+            if (!(selectedLine instanceof HTMLInputElement)) {
+                event.preventDefault();
+                window.alert("Hãy chọn món cần tách.");
+            }
+        });
+    }
 
     const checkoutForm = checkoutModal.querySelector("[data-payment-form]");
     if (checkoutForm instanceof HTMLFormElement) {

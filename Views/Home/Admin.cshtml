@@ -2,14 +2,6 @@
 @{
     ViewData["Title"] = "Quản trị";
 
-    var topMetrics = new[]
-    {
-        new { Label = "Tổng số món", Value = Model.MenuItems.Count.ToString(), Note = "Tất cả món hiện có trong SQL" },
-        new { Label = "Món đang bán", Value = Model.MenuItems.Count(x => x.IsAvailable).ToString(), Note = "Món đang hiện trên menu web" },
-        new { Label = "Hóa đơn hôm nay", Value = Model.Operations.TodayOrderCount.ToString(), Note = "Đơn đã ghi nhận trong ngày" },
-        new { Label = "Chờ thanh toán", Value = Model.Operations.PendingPaymentCount.ToString(), Note = "Yêu cầu thanh toán chưa xử lý" }
-    };
-
     var galleryVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 }
 
@@ -24,20 +16,20 @@
         <div class="auth-alert admin-alert">@Model.ErrorMessage</div>
     }
 
-    <section class="metric-row">
-        @foreach (var metric in topMetrics)
-        {
-            <article class="metric-card">
-                <span>@metric.Label</span>
-                <strong>@metric.Value</strong>
-                <p>@metric.Note</p>
-            </article>
-        }
-    </section>
+    <nav class="feature-nav" data-feature-nav aria-label="Mục quản trị">
+        <button class="feature-nav__button" type="button" data-feature-target="menu">Menu</button>
+        <button class="feature-nav__button" type="button" data-feature-target="qr">QR bàn</button>
+        <button class="feature-nav__button" type="button" data-feature-target="revenue">Doanh thu</button>
+        <button class="feature-nav__button" type="button" data-feature-target="payments">Thanh toán</button>
+        <button class="feature-nav__button" type="button" data-feature-target="orders">Hóa đơn</button>
+        <button class="feature-nav__button" type="button" data-feature-target="chat">Chat</button>
+        <button class="feature-nav__button" type="button" data-feature-target="gallery">Ảnh</button>
+        <button class="feature-nav__button" type="button" data-feature-target="reports">Báo cáo</button>
+    </nav>
 
-    <section class="admin-grid">
+    <section class="admin-grid feature-workspace" data-feature-workspace data-feature-default="menu">
         <div class="admin-main">
-            <article class="panel-card admin-editor-card">
+            <article class="panel-card admin-editor-card" data-feature-panel="menu">
                 <div class="panel-heading">
                     <div>
                         <h2>Thêm danh mục</h2>
@@ -69,7 +61,7 @@
                 </form>
             </article>
 
-            <article class="panel-card admin-editor-card">
+            <article class="panel-card admin-editor-card" data-feature-panel="menu">
                 <div class="panel-heading">
                     <div>
                         <h2>@(Model.IsEditing ? "Sửa món ăn" : "Thêm món mới")</h2>
@@ -173,7 +165,7 @@
                 </form>
             </article>
 
-            <article class="panel-card admin-chat-history">
+            <article class="panel-card admin-chat-history" data-feature-panel="chat" hidden>
                 <div class="panel-heading">
                     <div>
                         <h2>Lịch sử trò chuyện</h2>
@@ -223,7 +215,7 @@
                 }
             </article>
 
-            <article class="panel-card">
+            <article class="panel-card" data-feature-panel="payments" hidden>
                 <div class="panel-heading">
                     <div>
                         <h2>Lịch sử thanh toán</h2>
@@ -265,7 +257,7 @@
                 </div>
             </article>
 
-            <article class="panel-card">
+            <article class="panel-card" data-feature-panel="revenue" hidden>
                 <div class="panel-heading">
                     <div>
                         <h2>Doanh thu theo ca / ngày / tháng</h2>
@@ -302,7 +294,7 @@
                 </div>
             </article>
 
-            <article class="panel-card">
+            <article class="panel-card" data-feature-panel="orders" hidden>
                 <div class="panel-heading">
                     <div>
                         <h2>Hóa đơn, hủy và hoàn trả</h2>
@@ -332,7 +324,7 @@
                 </div>
             </article>
 
-            <article class="panel-card">
+            <article class="panel-card" data-feature-panel="menu">
                 <div class="panel-heading">
                     <div>
                         <h2>Danh sách món</h2>
@@ -398,7 +390,7 @@
                 </div>
             </article>
 
-            <article class="panel-card">
+            <article class="panel-card" data-feature-panel="gallery" hidden>
                 <div class="panel-heading">
                     <div>
                         <h2>Quản trị thay 6 ảnh slideshow</h2>
@@ -424,7 +416,7 @@
                 </div>
             </article>
 
-            <article class="panel-card">
+            <article class="panel-card" data-feature-panel="reports" hidden>
                 <div class="panel-heading">
                     <div>
                         <h2>Đánh giá mới</h2>
@@ -448,7 +440,7 @@
                 </div>
             </article>
 
-            <article class="panel-card">
+            <article class="panel-card" data-feature-panel="reports" hidden>
                 <div class="panel-heading">
                     <div>
                         <h2>Món bán chạy</h2>
@@ -465,7 +457,7 @@
                 </div>
             </article>
 
-            <article class="panel-card">
+            <article class="panel-card" data-feature-panel="reports" hidden>
                 <div class="panel-heading">
                     <div>
                         <h2>Bàn phục vụ nhiều</h2>
@@ -484,7 +476,7 @@
         </div>
 
         <aside class="admin-side">
-            <article class="panel-card qr-panel">
+            <article class="panel-card qr-panel" data-feature-panel="qr" hidden>
                 <div class="panel-heading">
                     <div>
                         <h2>QR theo bàn</h2>
@@ -493,10 +485,18 @@
                 <div class="qr-grid">
                     @foreach (var qr in Model.TableQrs)
                     {
-                        <div class="qr-item">
+                        <div class="qr-item @(qr.BlocksCustomerAccess ? "qr-item--blocked" : "")">
                             <strong>@qr.TableCode</strong>
                             <img class="qr-item__image" src="@qr.QrImageUrl" alt="QR bàn @qr.TableCode" />
-                            <a href="@qr.ShortUrl" target="_blank">Mở menu của bàn</a>
+                            @if (qr.BlocksCustomerAccess)
+                            {
+                                <span class="status-badge staff-unread-badge">Khóa khách: @qr.StateLabel</span>
+                                <small>QR vẫn tồn tại nhưng khách quét sẽ bị chặn.</small>
+                            }
+                            else
+                            {
+                                <a href="@qr.ShortUrl" target="_blank">Mở menu của bàn</a>
+                            }
                             <small>@qr.ShortUrl</small>
                         </div>
                     }

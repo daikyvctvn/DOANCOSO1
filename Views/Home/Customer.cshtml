@@ -13,7 +13,7 @@
     var imageVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 }
 
-<div class="customer-page" data-auto-refresh-url="@Url.Action("Customer", new { tableCode = Model.TableCode, search = Model.SearchTerm, category = Model.CategoryFilter, sort = Model.SortBy })" data-auto-refresh-seconds="20">
+<div class="customer-page" data-auto-refresh-url="@Url.Action("Customer", new { tableCode = Model.TableCode, search = Model.SearchTerm, category = Model.CategoryFilter, sort = Model.SortBy })" data-auto-refresh-seconds="20" data-live-page="customer" data-live-refresh-ms="2500">
     @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
     {
         <div class="auth-alert success admin-alert">@Model.StatusMessage</div>
@@ -391,15 +391,18 @@
                 </article>
             }
 
-            <article class="panel-card customer-chat-card">
+            <article class="panel-card customer-chat-card"
+                     data-chat-panel="customer"
+                     data-chat-table="@Model.TableCode"
+                     data-chat-url="@Url.Action("CustomerChatMessages", new { tableCode = Model.TableCode })">
                 <div class="panel-heading">
                     <div>
                         <h3>Bàn @Model.TableCode cần hỗ trợ</h3>
                     </div>
-                    <span class="status-badge">@Model.ChatMessages.Count tin</span>
+                    <span class="status-badge" data-chat-count>@Model.ChatMessages.Count tin</span>
                 </div>
 
-                <div class="customer-chat-thread">
+                <div class="customer-chat-thread" data-chat-thread>
                     @if (Model.ChatMessages.Count == 0)
                     {
                         <div class="chat-empty">
@@ -412,7 +415,7 @@
                         @foreach (var message in Model.ChatMessages)
                         {
                             var side = string.Equals(message.SenderRole, "Customer", StringComparison.OrdinalIgnoreCase) ? "mine" : "theirs";
-                            <div class="chat-bubble chat-bubble--@message.Direction chat-message chat-message--@side">
+                            <div class="chat-bubble chat-bubble--@message.Direction chat-message chat-message--@side" data-message-id="@message.MessageId">
                                 @if (side == "theirs")
                                 {
                                     <strong class="chat-message__name">@message.SenderName</strong>
@@ -424,7 +427,7 @@
                     }
                 </div>
 
-                <form class="customer-chat-form" asp-action="SendCustomerMessage" method="post">
+                <form class="customer-chat-form" asp-action="SendCustomerMessage" method="post" data-chat-form>
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="TableCode" value="@Model.TableCode" />
                     <input name="Message" maxlength="300" autocomplete="off" placeholder="Nhắn cho nhân viên..." />

@@ -18,10 +18,10 @@
         new { Value = "served", Label = "Đã phục vụ", ClassName = "staff-action-button--served" }
     };
 
-    var tableStates = new[] { "Bàn trống", "Đang ngồi", "Đang phục vụ", "Chờ dọn dẹp", "Đã thanh toán" };
+    var tableStates = new[] { "Bàn trống", "Đang ngồi", "Đang phục vụ", "Chờ dọn dẹp", "Đã thanh toán", "Bàn lỗi", "Ngưng phục vụ", "Đang sửa" };
 }
 
-<div class="staff-page" data-auto-refresh-url="@Url.Action("Staff")" data-auto-refresh-seconds="20">
+<div class="staff-page" data-auto-refresh-url="@(Context.Request.Path + Context.Request.QueryString)" data-auto-refresh-seconds="20" data-live-page="staff" data-live-refresh-ms="2500" data-staff-chat-url="@Url.Action("StaffChatThreads", new { portal = Context.Request.Query["portal"].FirstOrDefault() })">
     @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
     {
         <div class="auth-alert success admin-alert">@Model.StatusMessage</div>
@@ -43,9 +43,17 @@
         }
     </section>
 
-    <section class="staff-workspace">
+    <nav class="feature-nav" data-feature-nav aria-label="Mục nhân viên">
+        <button class="feature-nav__button" type="button" data-feature-target="orders">Đơn mới</button>
+        <button class="feature-nav__button" type="button" data-feature-target="kitchen">Bếp / bar</button>
+        <button class="feature-nav__button" type="button" data-feature-target="chat">Chat</button>
+        <button class="feature-nav__button" type="button" data-feature-target="payments">Thanh toán</button>
+        <button class="feature-nav__button" type="button" data-feature-target="tables">Bàn</button>
+    </nav>
+
+    <section class="staff-workspace feature-workspace" data-feature-workspace data-feature-default="orders">
         <div class="staff-workspace__main">
-            <article class="panel-card staff-section" id="orders">
+            <article class="panel-card staff-section" id="orders" data-feature-panel="orders">
                 <div class="panel-heading staff-section__head">
                     <div>
                         <h2>Đơn khách vừa gửi</h2>
@@ -94,7 +102,7 @@
                 </div>
             </article>
 
-            <article class="panel-card staff-section" id="kitchen">
+            <article class="panel-card staff-section" id="kitchen" data-feature-panel="kitchen" hidden>
                 <div class="panel-heading staff-section__head">
                     <div>
                         <h2>Món cần làm</h2>
@@ -150,15 +158,15 @@
                 </div>
             </article>
 
-            <article class="panel-card staff-section">
+            <article class="panel-card staff-section" data-staff-chat-panel data-feature-panel="chat" hidden>
                 <div class="panel-heading staff-section__head">
                     <div>
                         <h2>Hội thoại theo bàn</h2>
                     </div>
-                    <span class="status-badge">@Model.ChatThreads.Sum(x => x.PendingCount) tin chờ</span>
+                    <span class="status-badge" data-staff-chat-pending>@Model.ChatThreads.Sum(x => x.PendingCount) tin chờ</span>
                 </div>
 
-                <div class="staff-chat-list">
+                <div class="staff-chat-list" data-staff-chat-list>
                     @if (Model.ChatThreads.Count == 0)
                     {
                         <div class="staff-empty-state">
@@ -169,7 +177,7 @@
                     {
                         @foreach (var thread in Model.ChatThreads)
                         {
-                            <details class="staff-chat-card staff-chat-card--collapsible" open="@(thread.PendingCount > 0 ? "open" : null)">
+                            <details class="staff-chat-card staff-chat-card--collapsible" data-staff-chat-thread data-table-code="@thread.TableCode" open="@(thread.PendingCount > 0 ? "open" : null)">
                                 <summary class="staff-chat-summary">
                                     <strong>Bàn @thread.TableCode</strong>
                                     @if (thread.PendingCount > 0)
@@ -180,7 +188,7 @@
                                     {
                                         <span class="status-badge muted">Đã đọc</span>
                                     }
-                                    <small>@thread.LastMessageLabel</small>
+                                    <small data-staff-chat-last>@thread.LastMessageLabel</small>
                                     <form class="staff-chat-delete-form" asp-action="DeleteTableChat" method="post" onclick="event.stopPropagation()">
                                         @Html.AntiForgeryToken()
                                         <input type="hidden" name="tableCode" value="@thread.TableCode" />
@@ -189,11 +197,11 @@
                                 </summary>
 
                                 <div class="staff-chat-card__body">
-                                    <div class="chat-thread compact-stack">
+                                    <div class="chat-thread compact-stack" data-chat-thread>
                                         @foreach (var message in thread.Messages)
                                         {
                                             var side = string.Equals(message.SenderRole, "Staff", StringComparison.OrdinalIgnoreCase) ? "mine" : "theirs";
-                                            <div class="chat-bubble chat-bubble--@message.Direction chat-message chat-message--@side">
+                                            <div class="chat-bubble chat-bubble--@message.Direction chat-message chat-message--@side" data-message-id="@message.MessageId">
                                                 @if (side == "theirs")
                                                 {
                                                     <strong class="chat-message__name">@message.SenderName</strong>
@@ -204,7 +212,7 @@
                                         }
                                     </div>
 
-                                    <form class="staff-reply-form" asp-action="SendStaffMessage" method="post">
+                                    <form class="staff-reply-form" asp-action="SendStaffMessage" method="post" data-chat-form>
                                         @Html.AntiForgeryToken()
                                         <input type="hidden" name="TableCode" value="@thread.TableCode" />
                                         <input name="Message" placeholder="Nhập phản hồi nhanh..." />
@@ -219,7 +227,7 @@
         </div>
 
         <aside class="staff-workspace__side">
-            <article class="panel-card staff-section" id="payments">
+            <article class="panel-card staff-section" id="payments" data-feature-panel="payments" hidden>
                 <div class="panel-heading staff-section__head">
                     <div>
                         <h3>Yêu cầu từ khách</h3>
@@ -253,7 +261,7 @@
                 </div>
             </article>
 
-            <article class="panel-card staff-section" id="tables">
+            <article class="panel-card staff-section" id="tables" data-feature-panel="tables" hidden>
                 <div class="panel-heading staff-section__head">
                     <div>
                         <h3>Cập nhật nhanh</h3>
@@ -275,7 +283,7 @@
                                 <select name="State">
                                     @foreach (var state in tableStates)
                                     {
-                                        <option value="@state">@state</option>
+                                        <option value="@state" selected="@(string.Equals(table.State, state, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@state</option>
                                     }
                                 </select>
                                 <button class="btn btn-ghost btn-small" type="submit">Lưu</button>

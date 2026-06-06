@@ -2,9 +2,10 @@
 @{
     ViewData["Title"] = "Nhà hàng";
     var defaultTable = Model.Tables.FirstOrDefault();
+    var portal = Context.Request.Query["portal"].FirstOrDefault();
 }
 
-<div data-auto-refresh-url="@Url.Action("Restaurant")" data-auto-refresh-seconds="20" data-restaurant-board>
+<div data-auto-refresh-url="@(Context.Request.Path + Context.Request.QueryString)" data-auto-refresh-seconds="20" data-live-page="restaurant" data-live-refresh-ms="2500" data-restaurant-board>
     @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
     {
         <div class="auth-alert success admin-alert">@Model.StatusMessage</div>
@@ -133,8 +134,135 @@
                 <button class="btn btn-ghost" type="button" data-payment-button @(defaultTable.HasActiveOrder ? null : "disabled")>
                     Thanh toán
                 </button>
+                <button class="btn btn-ghost" type="button" data-transfer-button @(defaultTable.HasActiveOrder ? null : "disabled")>
+                    Chuyá»ƒn bÃ n
+                </button>
+                <button class="btn btn-ghost" type="button" data-split-button @(defaultTable.HasActiveOrder ? null : "disabled")>
+                    TÃ¡ch mÃ³n
+                </button>
             </div>
         </section>
+
+        <div class="restaurant-table-details-store" hidden>
+            @foreach (var table in Model.Tables)
+            {
+                <div data-table-transfer-items="@table.TableCode">
+                    @if (table.DetailedItems.Count == 0)
+                    {
+                        <div class="staff-empty-state"><strong>Không có món để tách.</strong></div>
+                    }
+                    else
+                    {
+                        @foreach (var item in table.DetailedItems)
+                        {
+                            <label class="split-item-option">
+                                <input type="radio" name="LineKey" value="@item.LineKey" />
+                                <span>
+                                    <strong>@item.Name x@(item.Quantity)</strong>
+                                    @if (!string.IsNullOrWhiteSpace(item.Note))
+                                    {
+                                        <small>@item.Note</small>
+                                    }
+                                </span>
+                                <b>@item.LineTotal.ToString("N0")d</b>
+                            </label>
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="checkout-modal" data-transfer-modal hidden>
+            <div class="checkout-modal__backdrop" data-transfer-close></div>
+            <section class="checkout-modal__panel checkout-modal__panel--narrow">
+                <div class="checkout-modal__header">
+                    <div>
+                        <span class="eyebrow">Chuyển toàn bộ bill</span>
+                        <h2 data-transfer-table-name>Ban @defaultTable.TableCode</h2>
+                        <small>Chuyển tất cả món và bill đang mở sang bàn khác.</small>
+                    </div>
+                    <button class="btn btn-ghost btn-small" type="button" data-transfer-close>Dong</button>
+                </div>
+                <form asp-action="TransferTable" asp-route-portal="@portal" method="post" class="restaurant-transfer-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="FromTableCode" value="@defaultTable.TableCode" data-transfer-from-table />
+                    <label class="restaurant-payment-form__field">
+                        <span>Ban nhan</span>
+                        <select name="ToTableCode" data-transfer-to-table>
+                            @foreach (var table in Model.Tables)
+                            {
+                                <option value="@table.TableCode">@table.TableCode - @table.State</option>
+                            }
+                        </select>
+                    </label>
+                    <div class="checkout-form__actions">
+                        <button class="btn btn-ghost" type="button" data-transfer-close>Huy</button>
+                        <button class="btn btn-accent" type="submit">Xác nhận chuyển bàn</button>
+                    </div>
+                </form>
+            </section>
+        </div>
+
+        <div class="checkout-modal" data-split-modal hidden>
+            <div class="checkout-modal__backdrop" data-split-close></div>
+            <section class="checkout-modal__panel">
+                <div class="checkout-modal__header">
+                    <div>
+                        <span class="eyebrow">Tách món sang bàn khác</span>
+                        <h2 data-split-table-name>Ban @defaultTable.TableCode</h2>
+                        <small>Chọn một dòng món, số lượng và bàn nhận.</small>
+                    </div>
+                    <button class="btn btn-ghost btn-small" type="button" data-split-close>Dong</button>
+                </div>
+                <form asp-action="SplitItemToTable" asp-route-portal="@portal" method="post" class="restaurant-transfer-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="FromTableCode" value="@defaultTable.TableCode" data-split-from-table />
+                    <div class="restaurant-payment-form__field">
+                        <span>Món cần tách</span>
+                        <div class="split-item-list" data-split-items>
+                            @if (defaultTable.DetailedItems.Count == 0)
+                            {
+                                <div class="staff-empty-state"><strong>Không có món để tách.</strong></div>
+                            }
+                            else
+                            {
+                                @foreach (var item in defaultTable.DetailedItems)
+                                {
+                                    <label class="split-item-option">
+                                        <input type="radio" name="LineKey" value="@item.LineKey" />
+                                        <span>
+                                            <strong>@item.Name x@(item.Quantity)</strong>
+                                            @if (!string.IsNullOrWhiteSpace(item.Note))
+                                            {
+                                                <small>@item.Note</small>
+                                            }
+                                        </span>
+                                        <b>@item.LineTotal.ToString("N0")d</b>
+                                    </label>
+                                }
+                            }
+                        </div>
+                    </div>
+                    <label class="restaurant-payment-form__field">
+                        <span>Số lượng tách</span>
+                        <input name="Quantity" type="number" min="1" value="1" data-split-quantity />
+                    </label>
+                    <label class="restaurant-payment-form__field">
+                        <span>Ban nhan</span>
+                        <select name="ToTableCode" data-split-to-table>
+                            @foreach (var table in Model.Tables)
+                            {
+                                <option value="@table.TableCode">@table.TableCode - @table.State</option>
+                            }
+                        </select>
+                    </label>
+                    <div class="checkout-form__actions">
+                        <button class="btn btn-ghost" type="button" data-split-close>Huy</button>
+                        <button class="btn btn-accent" type="submit">Xác nhận tách món</button>
+                    </div>
+                </form>
+            </section>
+        </div>
 
         <div class="checkout-modal" data-checkout-modal hidden>
             <div class="checkout-modal__backdrop" data-checkout-close></div>
@@ -178,7 +306,7 @@
                         </div>
                     </div>
 
-                    <form asp-action="CheckoutTable" method="post" class="checkout-form" data-payment-form>
+                    <form asp-action="CheckoutTable" asp-route-portal="@portal" method="post" class="checkout-form" data-payment-form>
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="TableCode" value="@defaultTable.TableCode" data-payment-table-code />
                         <label class="restaurant-payment-form__field">

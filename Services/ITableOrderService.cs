@@ -6,15 +6,20 @@ public interface ITableOrderService
 {
     string NormalizeTableCode(string? tableCode);
     IReadOnlyList<string> GetTableCodes();
+    Task<(bool IsAvailable, string StateLabel)> GetCustomerTableAvailabilityAsync(string tableCode, CancellationToken cancellationToken = default);
     Task ApplyCustomerSessionAsync(CustomerPageViewModel model, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, string? ErrorMessage)> AddItemAsync(CustomerAddToCartInputModel request, MenuDishViewModel dish, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, string? ErrorMessage, string? RemovedItemName)> RemoveItemAsync(CustomerRemoveCartItemInputModel request, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, string? ErrorMessage, string? OrderCode)> SubmitOrderAsync(string tableCode, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, string? ErrorMessage)> SendCustomerMessageAsync(CustomerChatInputModel request, CancellationToken cancellationToken = default);
+    Task<List<ChatMessageViewModel>> GetCustomerChatMessagesAsync(string tableCode, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, string? ErrorMessage)> RequestPaymentAsync(CustomerPaymentRequestInputModel request, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, string? ErrorMessage)> DirectCheckoutAsync(RestaurantCheckoutInputModel request, CancellationToken cancellationToken = default);
+    Task<(bool Succeeded, string? ErrorMessage)> TransferTableAsync(RestaurantTransferTableInputModel request, CancellationToken cancellationToken = default);
+    Task<(bool Succeeded, string? ErrorMessage)> SplitItemToTableAsync(RestaurantSplitItemInputModel request, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, string? ErrorMessage)> SubmitReviewAsync(CustomerReviewInputModel request, CancellationToken cancellationToken = default);
     Task<StaffPageViewModel> GetStaffDashboardAsync(CancellationToken cancellationToken = default);
+    Task<List<StaffChatThreadViewModel>> GetStaffChatThreadsAsync(CancellationToken cancellationToken = default);
     Task<(bool Succeeded, string? ErrorMessage)> UpdateOrderStatusAsync(StaffOrderStatusInputModel request, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, string? ErrorMessage)> SendStaffMessageAsync(StaffChatInputModel request, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, string? ErrorMessage)> DeleteTableChatAsync(string tableCode, CancellationToken cancellationToken = default);

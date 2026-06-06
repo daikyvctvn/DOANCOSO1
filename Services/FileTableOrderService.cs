@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using TableOrderWeb.Models;
 
@@ -14,9 +17,15 @@ public sealed class FileTableOrderService : ITableOrderService
 
     private readonly string _filePath;
     private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly SemaphoreSlim _sqlSyncLock = new(1, 1);
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<FileTableOrderService> _logger;
+    private bool _sqlSchemaReady;
 
-    public FileTableOrderService(IWebHostEnvironment environment)
+    public FileTableOrderService(IWebHostEnvironment environment, IConfiguration configuration, ILogger<FileTableOrderService> logger)
     {
+        _configuration = configuration;
+        _logger = logger;
         var directory = Path.Combine(environment.ContentRootPath, "data");
         Directory.CreateDirectory(directory);
         _filePath = Path.Combine(directory, "orders.json");
@@ -29,6 +38,36 @@ public sealed class FileTableOrderService : ITableOrderService
     }
 
     public IReadOnlyList<string> GetTableCodes() => TableCodes;
+
+    public async Task<(bool IsAvailable, string StateLabel)> GetCustomerTableAvailabilityAsync(string tableCode, CancellationToken cancellationToken = default)
+    {
+        var normalizedTableCode = NormalizeTableCode(tableCode);
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await ReadStoreAsync(cancellationToken);
+            var stateLabel = ResolveTableStateLabel(store, normalizedTableCode);
+            return (!BlocksCustomerAccess(stateLabel), stateLabel);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task SyncSqlHistoryAsync(CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await ReadStoreAsync(cancellationToken);
+            await SyncSqlHistoryBestEffortAsync(store, cancellationToken);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
 
     public async Task ApplyCustomerSessionAsync(CustomerPageViewModel model, CancellationToken cancellationToken = default)
     {
@@ -285,6 +324,31 @@ public sealed class FileTableOrderService : ITableOrderService
         }
     }
 
+    public async Task<List<ChatMessageViewModel>> GetCustomerChatMessagesAsync(string tableCode, CancellationToken cancellationToken = default)
+    {
+        var normalizedTableCode = NormalizeTableCode(tableCode);
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await ReadStoreAsync(cancellationToken);
+            var latestDayClosureUtc = FindLatestDayClosureUtc(store);
+
+            return store.ChatMessages
+                .Where(x => string.Equals(x.TableCode, normalizedTableCode, StringComparison.OrdinalIgnoreCase))
+                .Where(x => !latestDayClosureUtc.HasValue || x.CreatedAtUtc > latestDayClosureUtc.Value)
+                .Where(x => x.SenderRole != ChatRoles.System)
+                .OrderByDescending(x => x.CreatedAtUtc)
+                .Take(80)
+                .OrderBy(x => x.CreatedAtUtc)
+                .Select(MapChatMessage)
+                .ToList();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task<(bool Succeeded, string? ErrorMessage)> RequestPaymentAsync(CustomerPaymentRequestInputModel request, CancellationToken cancellationToken = default)
     {
         var normalizedTableCode = NormalizeTableCode(request.TableCode);
@@ -493,6 +557,135 @@ public sealed class FileTableOrderService : ITableOrderService
         }
     }
 
+    public async Task<(bool Succeeded, string? ErrorMessage)> TransferTableAsync(RestaurantTransferTableInputModel request, CancellationToken cancellationToken = default)
+    {
+        var fromTableCode = NormalizeTableCode(request.FromTableCode);
+        var toTableCode = NormalizeTableCode(request.ToTableCode);
+        if (string.Equals(fromTableCode, toTableCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, "Bàn chuyển đến phải khác bàn hiện tại.");
+        }
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await ReadStoreAsync(cancellationToken);
+            var movingOrders = store.Orders
+                .Where(x => string.Equals(x.TableCode, fromTableCode, StringComparison.OrdinalIgnoreCase))
+                .Where(x => x.Status is not OrderStatus.Cancelled and not OrderStatus.Refunded and not OrderStatus.Paid)
+                .Where(x => x.Items.Count > 0)
+                .ToList();
+
+            if (movingOrders.Count == 0)
+            {
+                return (false, $"Bàn {fromTableCode} không có món hoặc bill đang mở để chuyển.");
+            }
+
+            var updatedAtUtc = DateTime.UtcNow;
+            foreach (var order in movingOrders)
+            {
+                order.TableCode = toTableCode;
+                order.OrderCode = order.Status == OrderStatus.Draft ? null : GenerateNextOrderCode(store, toTableCode, order.Id);
+                order.UpdatedAtUtc = updatedAtUtc;
+            }
+
+            foreach (var payment in store.PaymentRequests.Where(x =>
+                         string.Equals(x.TableCode, fromTableCode, StringComparison.OrdinalIgnoreCase) &&
+                         x.Status == PaymentStatuses.Pending))
+            {
+                payment.TableCode = toTableCode;
+                payment.UpdatedAtUtc = updatedAtUtc;
+            }
+
+            MoveTableChatMessages(store, fromTableCode, toTableCode);
+            SetTableState(store, fromTableCode, "Bàn trống", updatedAtUtc, "Restaurant");
+            SetTableState(store, toTableCode, "Đang phục vụ", updatedAtUtc, "Restaurant");
+            UpdatePendingPaymentAmountsForTable(store, fromTableCode);
+            UpdatePendingPaymentAmountsForTable(store, toTableCode);
+            store.ChatMessages.Add(CreateSystemMessage(toTableCode, $"Đã chuyển toàn bộ bill từ bàn {fromTableCode} sang bàn {toTableCode}.", "table-transfer"));
+
+            await WriteStoreAsync(store, cancellationToken);
+            return (true, null);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<(bool Succeeded, string? ErrorMessage)> SplitItemToTableAsync(RestaurantSplitItemInputModel request, CancellationToken cancellationToken = default)
+    {
+        var fromTableCode = NormalizeTableCode(request.FromTableCode);
+        var toTableCode = NormalizeTableCode(request.ToTableCode);
+        if (string.Equals(fromTableCode, toTableCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, "Bàn nhận món phải khác bàn hiện tại.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.LineKey))
+        {
+            return (false, "Hãy chọn món cần tách.");
+        }
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await ReadStoreAsync(cancellationToken);
+            var line = FindOrderLineByKey(store, request.LineKey);
+            if (line is null || !string.Equals(line.Order.TableCode, fromTableCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, "Không tìm thấy món cần tách ở bàn hiện tại.");
+            }
+
+            if (line.Order.Status is OrderStatus.Cancelled or OrderStatus.Refunded or OrderStatus.Paid)
+            {
+                return (false, "Món này thuộc bill đã đóng nên không thể tách.");
+            }
+
+            var quantity = Math.Clamp(request.Quantity, 1, line.Item.Quantity);
+            var movedItem = CloneOrderItem(line.Item, quantity);
+            line.Item.Quantity -= quantity;
+            if (line.Item.Quantity <= 0)
+            {
+                line.Order.Items.RemoveAt(line.ItemIndex);
+            }
+
+            var updatedAtUtc = DateTime.UtcNow;
+            line.Order.UpdatedAtUtc = updatedAtUtc;
+            if (line.Order.Items.Count == 0)
+            {
+                store.Orders.Remove(line.Order);
+            }
+
+            var targetOrder = FindTargetOrderForSplit(store, toTableCode, line.Order.Status);
+            if (targetOrder is null)
+            {
+                targetOrder = CreateSplitTargetOrder(store, toTableCode, line.Order, updatedAtUtc);
+                store.Orders.Add(targetOrder);
+            }
+
+            AddOrMergeOrderItem(targetOrder, movedItem);
+            targetOrder.UpdatedAtUtc = updatedAtUtc;
+
+            SetTableState(store, toTableCode, "Đang phục vụ", updatedAtUtc, "Restaurant");
+            if (!HasOpenItems(store, fromTableCode))
+            {
+                SetTableState(store, fromTableCode, "Bàn trống", updatedAtUtc, "Restaurant");
+            }
+
+            UpdatePendingPaymentAmountsForTable(store, fromTableCode);
+            UpdatePendingPaymentAmountsForTable(store, toTableCode);
+            store.ChatMessages.Add(CreateSystemMessage(toTableCode, $"Đã tách {quantity} x {movedItem.Name} từ bàn {fromTableCode} sang bàn {toTableCode}.", "item-split"));
+
+            await WriteStoreAsync(store, cancellationToken);
+            return (true, null);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task<(bool Succeeded, string? ErrorMessage)> SubmitReviewAsync(CustomerReviewInputModel request, CancellationToken cancellationToken = default)
     {
         var normalizedTableCode = NormalizeTableCode(request.TableCode);
@@ -608,6 +801,20 @@ public sealed class FileTableOrderService : ITableOrderService
                 AvailableTableCount = tables.Count(x => !x.HasActiveOrder),
                 Tables = tables
             };
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<List<StaffChatThreadViewModel>> GetStaffChatThreadsAsync(CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var store = await ReadStoreAsync(cancellationToken);
+            return BuildChatThreads(store);
         }
         finally
         {
@@ -1033,6 +1240,270 @@ public sealed class FileTableOrderService : ITableOrderService
     {
         await using var stream = File.Create(_filePath);
         await JsonSerializer.SerializeAsync(stream, store, JsonOptions, cancellationToken);
+        await SyncSqlHistoryBestEffortAsync(store, cancellationToken);
+    }
+
+    private async Task SyncSqlHistoryBestEffortAsync(OrderStoreRecord store, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!CanUseSqlCmd())
+            {
+                return;
+            }
+
+            await _sqlSyncLock.WaitAsync(cancellationToken);
+            try
+            {
+                await EnsureSqlHistorySchemaAsync(cancellationToken);
+                await ExecuteSqlAsync(BuildSqlHistorySyncScript(store), cancellationToken);
+            }
+            finally
+            {
+                _sqlSyncLock.Release();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Khong the dong bo lich su order/bill sang SQL Server.");
+        }
+    }
+
+    private bool CanUseSqlCmd()
+    {
+        var sqlCmdPath = _configuration["SqlMenu:SqlCmdPath"];
+        return !string.IsNullOrWhiteSpace(sqlCmdPath) && File.Exists(sqlCmdPath);
+    }
+
+    private async Task EnsureSqlHistorySchemaAsync(CancellationToken cancellationToken)
+    {
+        if (_sqlSchemaReady)
+        {
+            return;
+        }
+
+        await ExecuteSqlAsync(@"SET NOCOUNT ON;
+IF OBJECT_ID(N'dbo.TableOrderHistory', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.TableOrderHistory
+    (
+        OrderId nvarchar(64) NOT NULL CONSTRAINT PK_TableOrderHistory PRIMARY KEY,
+        TableCode nvarchar(20) NOT NULL,
+        OrderCode nvarchar(50) NULL,
+        Status nvarchar(50) NOT NULL,
+        CreatedAtUtc datetime2(7) NOT NULL,
+        UpdatedAtUtc datetime2(7) NOT NULL,
+        SubmittedAtUtc datetime2(7) NULL,
+        AcceptedAtUtc datetime2(7) NULL,
+        ReadyAtUtc datetime2(7) NULL,
+        ServedAtUtc datetime2(7) NULL,
+        PaidAtUtc datetime2(7) NULL,
+        Subtotal decimal(18,2) NOT NULL,
+        ServiceFee decimal(18,2) NOT NULL,
+        TotalAmount decimal(18,2) NOT NULL
+    );
+END;
+
+IF OBJECT_ID(N'dbo.TableOrderHistoryItem', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.TableOrderHistoryItem
+    (
+        OrderId nvarchar(64) NOT NULL,
+        LineNumber int NOT NULL,
+        ItemId int NOT NULL,
+        ItemCode nvarchar(50) NOT NULL,
+        ItemName nvarchar(255) NOT NULL,
+        UnitPrice decimal(18,2) NOT NULL,
+        Quantity int NOT NULL,
+        LineTotal decimal(18,2) NOT NULL,
+        Note nvarchar(1000) NULL,
+        CONSTRAINT PK_TableOrderHistoryItem PRIMARY KEY (OrderId, LineNumber),
+        CONSTRAINT FK_TableOrderHistoryItem_Order FOREIGN KEY (OrderId) REFERENCES dbo.TableOrderHistory(OrderId) ON DELETE CASCADE
+    );
+END;
+
+IF OBJECT_ID(N'dbo.TablePaymentHistory', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.TablePaymentHistory
+    (
+        PaymentId nvarchar(64) NOT NULL CONSTRAINT PK_TablePaymentHistory PRIMARY KEY,
+        TableCode nvarchar(20) NOT NULL,
+        OrderId nvarchar(64) NULL,
+        Method nvarchar(50) NOT NULL,
+        Status nvarchar(50) NOT NULL,
+        Amount decimal(18,2) NOT NULL,
+        Note nvarchar(1000) NULL,
+        RequestedAtUtc datetime2(7) NOT NULL,
+        UpdatedAtUtc datetime2(7) NOT NULL
+    );
+END;", cancellationToken);
+
+        _sqlSchemaReady = true;
+    }
+
+    private static string BuildSqlHistorySyncScript(OrderStoreRecord store)
+    {
+        var sql = new StringBuilder("SET NOCOUNT ON;\n");
+
+        foreach (var order in store.Orders.Where(x => x.Status != OrderStatus.Draft))
+        {
+            var subtotal = CalculateOrderSubtotal(order);
+            var serviceFee = CalculateServiceFee(subtotal);
+            var totalAmount = subtotal + serviceFee;
+
+            sql.AppendLine($@"MERGE dbo.TableOrderHistory AS target
+USING (SELECT {SqlUnicode(order.Id)} AS OrderId) AS source
+ON target.OrderId = source.OrderId
+WHEN MATCHED THEN UPDATE SET
+    TableCode = {SqlUnicode(order.TableCode)},
+    OrderCode = {SqlNullableUnicode(order.OrderCode)},
+    Status = {SqlUnicode(NormalizeStatusText(order.Status))},
+    CreatedAtUtc = {SqlDate(order.CreatedAtUtc)},
+    UpdatedAtUtc = {SqlDate(order.UpdatedAtUtc)},
+    SubmittedAtUtc = {SqlNullableDate(order.SubmittedAtUtc)},
+    AcceptedAtUtc = {SqlNullableDate(order.AcceptedAtUtc)},
+    ReadyAtUtc = {SqlNullableDate(order.ReadyAtUtc)},
+    ServedAtUtc = {SqlNullableDate(order.ServedAtUtc)},
+    PaidAtUtc = {SqlNullableDate(order.PaidAtUtc)},
+    Subtotal = {SqlDecimal(subtotal)},
+    ServiceFee = {SqlDecimal(serviceFee)},
+    TotalAmount = {SqlDecimal(totalAmount)}
+WHEN NOT MATCHED THEN INSERT
+    (OrderId, TableCode, OrderCode, Status, CreatedAtUtc, UpdatedAtUtc, SubmittedAtUtc, AcceptedAtUtc, ReadyAtUtc, ServedAtUtc, PaidAtUtc, Subtotal, ServiceFee, TotalAmount)
+VALUES
+    ({SqlUnicode(order.Id)}, {SqlUnicode(order.TableCode)}, {SqlNullableUnicode(order.OrderCode)}, {SqlUnicode(NormalizeStatusText(order.Status))}, {SqlDate(order.CreatedAtUtc)}, {SqlDate(order.UpdatedAtUtc)}, {SqlNullableDate(order.SubmittedAtUtc)}, {SqlNullableDate(order.AcceptedAtUtc)}, {SqlNullableDate(order.ReadyAtUtc)}, {SqlNullableDate(order.ServedAtUtc)}, {SqlNullableDate(order.PaidAtUtc)}, {SqlDecimal(subtotal)}, {SqlDecimal(serviceFee)}, {SqlDecimal(totalAmount)});
+
+DELETE FROM dbo.TableOrderHistoryItem WHERE OrderId = {SqlUnicode(order.Id)};");
+
+            for (var index = 0; index < order.Items.Count; index++)
+            {
+                var item = order.Items[index];
+                sql.AppendLine($@"INSERT INTO dbo.TableOrderHistoryItem
+    (OrderId, LineNumber, ItemId, ItemCode, ItemName, UnitPrice, Quantity, LineTotal, Note)
+VALUES
+    ({SqlUnicode(order.Id)}, {index + 1}, {item.ItemId}, {SqlUnicode(item.ItemCode)}, {SqlUnicode(item.Name)}, {SqlDecimal(item.UnitPrice)}, {item.Quantity}, {SqlDecimal(item.UnitPrice * item.Quantity)}, {SqlNullableUnicode(item.Note)});");
+            }
+        }
+
+        foreach (var payment in store.PaymentRequests)
+        {
+            sql.AppendLine($@"MERGE dbo.TablePaymentHistory AS target
+USING (SELECT {SqlUnicode(payment.Id)} AS PaymentId) AS source
+ON target.PaymentId = source.PaymentId
+WHEN MATCHED THEN UPDATE SET
+    TableCode = {SqlUnicode(payment.TableCode)},
+    OrderId = {SqlNullableUnicode(payment.OrderId)},
+    Method = {SqlUnicode(payment.Method)},
+    Status = {SqlUnicode(payment.Status)},
+    Amount = {SqlDecimal(payment.Amount)},
+    Note = {SqlNullableUnicode(payment.Note)},
+    RequestedAtUtc = {SqlDate(payment.RequestedAtUtc)},
+    UpdatedAtUtc = {SqlDate(payment.UpdatedAtUtc)}
+WHEN NOT MATCHED THEN INSERT
+    (PaymentId, TableCode, OrderId, Method, Status, Amount, Note, RequestedAtUtc, UpdatedAtUtc)
+VALUES
+    ({SqlUnicode(payment.Id)}, {SqlUnicode(payment.TableCode)}, {SqlNullableUnicode(payment.OrderId)}, {SqlUnicode(payment.Method)}, {SqlUnicode(payment.Status)}, {SqlDecimal(payment.Amount)}, {SqlNullableUnicode(payment.Note)}, {SqlDate(payment.RequestedAtUtc)}, {SqlDate(payment.UpdatedAtUtc)});");
+        }
+
+        return sql.ToString();
+    }
+
+    private async Task<string> ExecuteSqlAsync(string sql, CancellationToken cancellationToken)
+    {
+        var sqlCmdPath = _configuration["SqlMenu:SqlCmdPath"];
+        var server = _configuration["SqlMenu:Server"] ?? "localhost";
+        var database = _configuration["SqlMenu:Database"] ?? "TableOrderDb";
+
+        if (string.IsNullOrWhiteSpace(sqlCmdPath) || !File.Exists(sqlCmdPath))
+        {
+            throw new InvalidOperationException("Khong tim thay sqlcmd de thao tac voi SQL Server.");
+        }
+
+        var tempQueryFile = Path.Combine(Path.GetTempPath(), $"order-history-query-{Guid.NewGuid():N}.sql");
+        var tempOutputFile = Path.Combine(Path.GetTempPath(), $"order-history-output-{Guid.NewGuid():N}.txt");
+
+        try
+        {
+            await File.WriteAllTextAsync(tempQueryFile, sql, Encoding.UTF8, cancellationToken);
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = sqlCmdPath,
+                Arguments = $"-S {server} -d {database} -E -b -No -u -h -1 -s \"|\" -w 65535 -y 8000 -Y 8000 -i \"{tempQueryFile}\" -o \"{tempOutputFile}\"",
+                RedirectStandardError = true,
+                StandardErrorEncoding = Encoding.Unicode,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new Process { StartInfo = psi };
+            process.Start();
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+
+            var error = (await errorTask).Trim();
+            var output = File.Exists(tempOutputFile)
+                ? (await File.ReadAllTextAsync(tempOutputFile, Encoding.Unicode, cancellationToken)).Trim()
+                : string.Empty;
+
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "sqlcmd tra ve loi khong xac dinh." : error);
+            }
+
+            return output;
+        }
+        finally
+        {
+            TryDelete(tempQueryFile);
+            TryDelete(tempOutputFile);
+        }
+    }
+
+    private static string NormalizeStatusText(string status)
+    {
+        return status switch
+        {
+            "SubmitteÄ‘" or "Submitteđ" => "Submitted",
+            "AccepteÄ‘" or "Accepteđ" => "Accepted",
+            "ServeÄ‘" or "Serveđ" => "Served",
+            "PaiÄ‘" or "Paiđ" => "Paid",
+            "CancelleÄ‘" or "Cancelleđ" => "Cancelled",
+            "RefundeÄ‘" or "Refundeđ" => "Refunded",
+            _ => status
+        };
+    }
+
+    private static string SqlDate(DateTime value)
+        => $"CONVERT(datetime2(7), '{value.ToUniversalTime():yyyy-MM-ddTHH:mm:ss.fffffff}', 126)";
+
+    private static string SqlNullableDate(DateTime? value)
+        => value.HasValue ? SqlDate(value.Value) : "NULL";
+
+    private static string SqlDecimal(decimal value)
+        => value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string SqlUnicode(string value)
+        => $"N'{EscapeSql(value)}'";
+
+    private static string SqlNullableUnicode(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "NULL" : SqlUnicode(value.Trim());
+
+    private static string EscapeSql(string value)
+        => value.Trim().Replace("'", "''");
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+        }
     }
 
     private static CustomerCartItemViewModel MapCartItem(TableOrderItemRecord item)
@@ -1213,12 +1684,126 @@ public sealed class FileTableOrderService : ITableOrderService
 
     private static decimal CalculateServiceFee(decimal subtotal) => subtotal <= 0 ? 0 : Math.Round(subtotal * 0.05m, 0);
 
-    private static void ResetTableSession(OrderStoreRecord store, string tableCode, DateTime updatedAtUtc, string updatedBy)
+    private static string GenerateNextOrderCode(OrderStoreRecord store, string tableCode, string? excludingOrderId = null)
     {
-        store.Orders.RemoveAll(x =>
+        var nextNumber = store.Orders.Count(x =>
             string.Equals(x.TableCode, tableCode, StringComparison.OrdinalIgnoreCase) &&
-            x.Status == OrderStatus.Draft);
+            !string.Equals(x.Id, excludingOrderId, StringComparison.OrdinalIgnoreCase) &&
+            x.Status is not OrderStatus.Draft and not OrderStatus.Cancelled and not OrderStatus.Refunded and not OrderStatus.Paid) + 1;
 
+        return $"{tableCode}-{nextNumber:000}";
+    }
+
+    private static OrderLineRef? FindOrderLineByKey(OrderStoreRecord store, string lineKey)
+    {
+        var parts = lineKey.Split(':', 2);
+        if (parts.Length != 2 || !int.TryParse(parts[1], out var itemIndex) || itemIndex < 0)
+        {
+            return null;
+        }
+
+        var order = store.Orders.FirstOrDefault(x => string.Equals(x.Id, parts[0], StringComparison.OrdinalIgnoreCase));
+        if (order is null || itemIndex >= order.Items.Count)
+        {
+            return null;
+        }
+
+        return new OrderLineRef(order, order.Items[itemIndex], itemIndex);
+    }
+
+    private static TableOrderRecord? FindTargetOrderForSplit(OrderStoreRecord store, string tableCode, string status)
+    {
+        return store.Orders
+            .Where(x => string.Equals(x.TableCode, tableCode, StringComparison.OrdinalIgnoreCase))
+            .Where(x => x.Status == status)
+            .Where(x => x.Status is not OrderStatus.Cancelled and not OrderStatus.Refunded and not OrderStatus.Paid)
+            .OrderByDescending(x => x.UpdatedAtUtc)
+            .FirstOrDefault();
+    }
+
+    private static TableOrderRecord CreateSplitTargetOrder(OrderStoreRecord store, string tableCode, TableOrderRecord sourceOrder, DateTime updatedAtUtc)
+    {
+        return new TableOrderRecord
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            TableCode = tableCode,
+            Status = sourceOrder.Status,
+            OrderCode = sourceOrder.Status == OrderStatus.Draft ? null : GenerateNextOrderCode(store, tableCode),
+            CreatedAtUtc = updatedAtUtc,
+            UpdatedAtUtc = updatedAtUtc,
+            SubmittedAtUtc = sourceOrder.SubmittedAtUtc.HasValue ? updatedAtUtc : null,
+            AcceptedAtUtc = sourceOrder.AcceptedAtUtc.HasValue ? updatedAtUtc : null,
+            ReadyAtUtc = sourceOrder.ReadyAtUtc.HasValue ? updatedAtUtc : null,
+            ServedAtUtc = sourceOrder.ServedAtUtc.HasValue ? updatedAtUtc : null
+        };
+    }
+
+    private static TableOrderItemRecord CloneOrderItem(TableOrderItemRecord item, int quantity)
+    {
+        return new TableOrderItemRecord
+        {
+            ItemId = item.ItemId,
+            ItemCode = item.ItemCode,
+            Name = item.Name,
+            UnitPrice = item.UnitPrice,
+            Quantity = quantity,
+            Note = item.Note
+        };
+    }
+
+    private static void AddOrMergeOrderItem(TableOrderRecord order, TableOrderItemRecord item)
+    {
+        var existingItem = order.Items.FirstOrDefault(x =>
+            x.ItemId == item.ItemId &&
+            string.Equals(x.ItemCode, item.ItemCode, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(x.Name, item.Name, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(x.Note, item.Note, StringComparison.OrdinalIgnoreCase) &&
+            x.UnitPrice == item.UnitPrice);
+
+        if (existingItem is null)
+        {
+            order.Items.Add(item);
+            return;
+        }
+
+        existingItem.Quantity += item.Quantity;
+    }
+
+    private static void MoveTableChatMessages(OrderStoreRecord store, string fromTableCode, string toTableCode)
+    {
+        foreach (var message in store.ChatMessages.Where(x => string.Equals(x.TableCode, fromTableCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            message.TableCode = toTableCode;
+        }
+    }
+
+    private static bool HasOpenItems(OrderStoreRecord store, string tableCode)
+    {
+        return store.Orders.Any(x =>
+            string.Equals(x.TableCode, tableCode, StringComparison.OrdinalIgnoreCase) &&
+            x.Status is not OrderStatus.Cancelled and not OrderStatus.Refunded and not OrderStatus.Paid &&
+            x.Items.Count > 0);
+    }
+
+    private static void UpdatePendingPaymentAmountsForTable(OrderStoreRecord store, string tableCode)
+    {
+        var subtotal = store.Orders
+            .Where(x => string.Equals(x.TableCode, tableCode, StringComparison.OrdinalIgnoreCase))
+            .Where(x => x.Status is not OrderStatus.Draft and not OrderStatus.Cancelled and not OrderStatus.Refunded and not OrderStatus.Paid)
+            .Sum(CalculateOrderSubtotal);
+        var total = subtotal + CalculateServiceFee(subtotal);
+
+        foreach (var payment in store.PaymentRequests.Where(x =>
+                     string.Equals(x.TableCode, tableCode, StringComparison.OrdinalIgnoreCase) &&
+                     x.Status == PaymentStatuses.Pending))
+        {
+            payment.Amount = total;
+            payment.UpdatedAtUtc = DateTime.UtcNow;
+        }
+    }
+
+    private static void SetTableState(OrderStoreRecord store, string tableCode, string state, DateTime updatedAtUtc, string updatedBy)
+    {
         var tableState = store.TableStates.FirstOrDefault(x =>
             string.Equals(x.TableCode, tableCode, StringComparison.OrdinalIgnoreCase));
         if (tableState is null)
@@ -1227,9 +1812,18 @@ public sealed class FileTableOrderService : ITableOrderService
             store.TableStates.Add(tableState);
         }
 
-        tableState.State = "Bàn trống";
+        tableState.State = state;
         tableState.UpdatedAtUtc = updatedAtUtc;
         tableState.UpdatedBy = updatedBy;
+    }
+
+    private static void ResetTableSession(OrderStoreRecord store, string tableCode, DateTime updatedAtUtc, string updatedBy)
+    {
+        store.Orders.RemoveAll(x =>
+            string.Equals(x.TableCode, tableCode, StringComparison.OrdinalIgnoreCase) &&
+            x.Status == OrderStatus.Draft);
+
+        SetTableState(store, tableCode, "Bàn trống", updatedAtUtc, updatedBy);
     }
 
     private static void ClearTableChatSession(OrderStoreRecord store, string tableCode)
@@ -1430,24 +2024,32 @@ public sealed class FileTableOrderService : ITableOrderService
                 .OrderBy(x => x)
                 .ToList();
             var detailedItems = activeOrders
-                .SelectMany(x => x.Items)
-                .GroupBy(x => new { x.Name, x.UnitPrice, x.Note })
+                .SelectMany(order => order.Items.Select((item, index) => new
+                {
+                    Order = order,
+                    Item = item,
+                    ItemIndex = index
+                }))
                 .Select(x => new TableOrderLineViewModel
                 {
-                    Name = x.Key.Name,
-                    UnitPrice = x.Key.UnitPrice,
-                    Quantity = x.Sum(i => i.Quantity),
-                    LineTotal = x.Sum(i => i.UnitPrice * i.Quantity),
-                    Note = x.Key.Note
+                    LineKey = $"{x.Order.Id}:{x.ItemIndex}",
+                    Name = x.Item.Name,
+                    UnitPrice = x.Item.UnitPrice,
+                    Quantity = x.Item.Quantity,
+                    MaxQuantity = x.Item.Quantity,
+                    LineTotal = x.Item.UnitPrice * x.Item.Quantity,
+                    Note = x.Item.Note
                 })
                 .OrderBy(x => x.Name)
                 .ThenBy(x => x.Note)
                 .ToList();
 
+            var stateLabel = ResolveTableStateLabel(store, code);
             return new TableStatusViewModel
             {
                 TableCode = code,
-                State = ResolveTableStateLabel(store, code),
+                State = stateLabel,
+                BlocksCustomerAccess = BlocksCustomerAccess(stateLabel),
                 OutstandingTotal = outstanding + CalculateServiceFee(outstanding),
                 LastActivityLabel = latestActivity.ToLocalTime().ToString("HH:mm dd/MM"),
                 HasActiveOrder = activeOrders.Count > 0,
@@ -1598,13 +2200,22 @@ public sealed class FileTableOrderService : ITableOrderService
         var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
         return normalized switch
         {
-            "ban trong" => "Bàn trống",
-            "dang ngoi" => "Đang ngồi",
-            "dang phuc vu" => "Đang phục vụ",
-            "cho don dep" => "Chờ dọn dẹp",
-            "da thanh toan" => "Đã thanh toán",
+            "bàn trống" or "ban trong" => "Bàn trống",
+            "đang ngồi" or "dang ngoi" => "Đang ngồi",
+            "đang phục vụ" or "dang phuc vu" => "Đang phục vụ",
+            "chờ dọn dẹp" or "cho don dep" => "Chờ dọn dẹp",
+            "đã thanh toán" or "da thanh toan" => "Đã thanh toán",
+            "bàn lỗi" or "ban loi" => "Bàn lỗi",
+            "ngưng phục vụ" or "ngung phuc vu" => "Ngưng phục vụ",
+            "đang sửa" or "dang sua" => "Đang sửa",
             _ => null
         };
+    }
+
+    private static bool BlocksCustomerAccess(string? state)
+    {
+        var normalized = (state ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized is "bàn lỗi" or "ban loi" or "ngưng phục vụ" or "ngung phuc vu" or "đang sửa" or "dang sua";
     }
 
     private static string MapPaymentMethodLabel(string method)
@@ -1794,6 +2405,8 @@ public sealed class FileTableOrderService : ITableOrderService
         public DateTime UpdatedAtUtc { get; set; }
         public string UpdatedBy { get; set; } = string.Empty;
     }
+
+    private sealed record OrderLineRef(TableOrderRecord Order, TableOrderItemRecord Item, int ItemIndex);
 }
 
 file static class TablePaymentRequestRecordExtensions

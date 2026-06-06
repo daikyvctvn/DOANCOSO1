@@ -9,6 +9,7 @@ obj/
 .net8run/
 .runbin/
 .runbin2/
+live-run/
 
 # User/runtime data
 data/*.json

@@ -414,6 +414,39 @@ input {
   padding: 1.35rem;
 }
 
+.feature-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 250, 241, 0.78);
+}
+
+.feature-nav__button {
+  min-height: 42px;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.feature-nav__button:hover,
+.feature-nav__button.is-active {
+  border-color: rgba(88, 125, 96, 0.5);
+  background: rgba(84, 125, 96, 0.16);
+  color: var(--accent-deep);
+}
+
+.feature-workspace [hidden] {
+  display: none !important;
+}
+
 .preview-card {
   border-radius: var(--radius-md);
 }
@@ -1769,6 +1802,53 @@ input {
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.78);
   text-align: center;
+}
+
+.qr-item--blocked {
+  border-color: rgba(154, 62, 45, 0.45);
+  background: rgba(154, 62, 45, 0.08);
+}
+
+.qr-item--blocked .qr-item__image {
+  opacity: 0.45;
+}
+
+.checkout-modal__panel--narrow {
+  max-width: 560px;
+}
+
+.restaurant-transfer-form,
+.split-item-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.split-item-list {
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.split-item-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.74);
+  cursor: pointer;
+}
+
+.split-item-option span {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.split-item-option small {
+  color: var(--muted);
 }
 
 .qr-item__image {
@@ -3142,6 +3222,11 @@ body.customer-cart-open .cart-drawer-backdrop {
   align-items: start;
 }
 
+.staff-workspace.feature-workspace,
+.admin-grid.feature-workspace {
+  grid-template-columns: 1fr;
+}
+
 .staff-workspace__main,
 .staff-workspace__side,
 .staff-order-list,
@@ -3156,6 +3241,11 @@ body.customer-cart-open .cart-drawer-backdrop {
 .staff-workspace__side {
   position: sticky;
   top: 96px;
+}
+
+.feature-workspace .staff-workspace__side,
+.feature-workspace .admin-side {
+  position: static;
 }
 
 .staff-section {

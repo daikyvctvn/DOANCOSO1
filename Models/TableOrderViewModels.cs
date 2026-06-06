@@ -8,6 +8,8 @@ public sealed class TableQrViewModel
     public string MenuUrl { get; set; } = string.Empty;
     public string ShortUrl { get; set; } = string.Empty;
     public string QrImageUrl { get; set; } = string.Empty;
+    public string StateLabel { get; set; } = string.Empty;
+    public bool BlocksCustomerAccess { get; set; }
 }
 
 public sealed class CustomerCartItemViewModel
@@ -23,8 +25,10 @@ public sealed class CustomerCartItemViewModel
 
 public sealed class TableOrderLineViewModel
 {
+    public string LineKey { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Quantity { get; set; }
+    public int MaxQuantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal LineTotal { get; set; }
     public string Note { get; set; } = string.Empty;
@@ -163,6 +167,30 @@ public sealed class RestaurantCheckoutInputModel
     public string Note { get; set; } = string.Empty;
 }
 
+public sealed class RestaurantTransferTableInputModel
+{
+    [Required]
+    public string FromTableCode { get; set; } = string.Empty;
+
+    [Required]
+    public string ToTableCode { get; set; } = string.Empty;
+}
+
+public sealed class RestaurantSplitItemInputModel
+{
+    [Required]
+    public string FromTableCode { get; set; } = string.Empty;
+
+    [Required]
+    public string ToTableCode { get; set; } = string.Empty;
+
+    [Required]
+    public string LineKey { get; set; } = string.Empty;
+
+    [Range(1, 999)]
+    public int Quantity { get; set; } = 1;
+}
+
 public sealed class CustomerReviewInputModel
 {
     [Required]
@@ -234,6 +262,7 @@ public sealed class TableStatusViewModel
 {
     public string TableCode { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;
+    public bool BlocksCustomerAccess { get; set; }
     public decimal OutstandingTotal { get; set; }
     public string LastActivityLabel { get; set; } = string.Empty;
     public bool HasActiveOrder { get; set; }
